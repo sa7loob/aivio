@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import csv
 import io
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -39,6 +40,25 @@ def next_cursor(rows: list[Any], limit: int, ts_key: str) -> str | None:
         return None
     last = rows[-1]
     return encode_cursor(last[ts_key], last["id"])
+
+
+# ------------------------------------------------------------------ search
+_PHONE_LIKE = re.compile(r"[\d\s()+\-]{3,}")
+
+
+def normalize_search(q: str | None) -> str | None:
+    """نص البحث في المحادثات والطلبات. رقم بأي صيغة محلية (0913334444، 091 333 4444، 00218...)
+    يتحول إلى أرقام فقط بدون 00 أو 0 في البداية => يطابق +218913334444 و wa_id بالبحث الجزئي."""
+    text = (q or "").strip()
+    if not text:
+        return None
+    if _PHONE_LIKE.fullmatch(text):
+        digits = re.sub(r"\D", "", text)
+        if digits.startswith("00"):
+            digits = digits[2:]
+        digits = digits.lstrip("0")
+        return digits or None
+    return text
 
 
 # ------------------------------------------------------------------ reply window

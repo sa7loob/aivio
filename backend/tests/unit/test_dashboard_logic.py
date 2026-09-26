@@ -15,6 +15,7 @@ from app.dashboard.logic import (
     encode_cursor,
     leads_to_csv,
     next_cursor,
+    normalize_search,
     window_open,
 )
 
@@ -113,3 +114,17 @@ def test_csv_arabic_bom_phone_and_injection():
     assert d["الهاتف"] == "‎+218917778888"
     assert d["الاسم"].startswith("'=") and d["ملاحظات"].startswith("'-")
     assert d["رضّع"] == "" and d["الفترة المفضلة"] == "1.500"
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("0913334444", "913334444"),          # الصيغة المحلية المعتادة
+    ("091 333 4444", "913334444"),        # كما تعرضها اللوحة
+    ("+218 91-333-4444", "218913334444"),
+    ("00218913334444", "218913334444"),
+    ("3334", "3334"),                     # جزء من الرقم
+    ("  أبو محمد ", "أبو محمد"),          # اسم: كما هو
+    ("Ali 2", "Ali 2"),
+    ("", None), ("   ", None), (None, None), ("000", None),
+])
+def test_normalize_search(raw, expected):
+    assert normalize_search(raw) == expected
