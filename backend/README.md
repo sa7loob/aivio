@@ -28,16 +28,18 @@ app/
   agent/history.py         تحويل الرسائل المخزنة إلى تاريخ المحادثة
   agent/knowledge_ingest   تقطيع + embeddings + إدخال في knowledge_chunks
 evals/                     cases.yaml + run.py (تقييم بالموديل الحقيقي)
-migrations/versions/       0001..0010
+migrations/versions/       0001..0011
 app/admin/                 Admin API الداخلي (tenants, channels, billing, vouchers)
 app/billing/               رموز القسائم + تحويل أخطاء المال إلى HTTP
 app/identity/              كلمات المرور (scrypt) والجلسات + SQL الهوية
 app/onboarding/            الربط الذاتي: Embedded Signup + Facebook Login
-app/api/v1/                auth / team / onboarding / channels
+app/api/v1/                auth / team / onboarding / channels / inbox / leads / events
+app/dashboard/             SQL ومنطق اللوحة (Inbox + Leads)  ·  app/realtime/  LISTEN/NOTIFY -> SSE
 app/channels/messenger.py  ماسنجر + إنستغرام (parsers + sender)
 app/web/connect.html       صفحة الربط المؤقتة (/connect)
 docs/phases/               وثائق المراحل
 scripts/                   register_whatsapp_channel ، ingest_knowledge ، run_sql_tests.sh
+scripts/dev_*              للتطوير فقط: بديل Meta + OpenAI (dev_mock_upstream) ، webhook موقّع (dev_send_whatsapp)
 tests/unit, tests/api      pytest ، tests/sql اختبارات قاعدة البيانات
 ```
 
@@ -130,10 +132,27 @@ GET  /api/v1/events?tenant=<id>            # SSE (EventSource)
 خلف nginx: مسار `/api/v1/events` يحتاج `proxy_buffering off` و`proxy_read_timeout 1h`.
 التفاصيل: `docs/phases/phase-6.md`.
 
+البحث `q` في المحادثات والطلبات يقبل الرقم بأي صيغة محلية (`0913334444` أو `091 333 4444` أو `00218...`).
+
+## التجربة المحلية بدون Meta و OpenAI (للتطوير فقط)
+
+```bash
+.venv/bin/python -m scripts.dev_mock_upstream 8099 &
+export META_GRAPH_BASE_URL=http://127.0.0.1:8099 OPENAI_BASE_URL=http://127.0.0.1:8099/v1 OPENAI_API_KEY=sk-mock
+# شغّل الـ API والـ worker بنفس البيئة، ثم سجّل قناة تجريبية (register_whatsapp_channel) وأرسل رسالة زبون:
+.venv/bin/python -m scripts.dev_send_whatsapp --from 218913334444 --name "أبو محمد" \
+    --text "قداش عمرة رمضان؟" --phone-number-id <PHONE_NUMBER_ID>
+```
+
+- البديل يرد باللهجة الليبية، و«احجز» في رسالة الزبون تستدعي `create_lead`.
+- `GET /__mock/stats` يعيد عدد استدعاءات الـ LLM والإرسال.
+- `POST /__mock/fail-sends {"on": true}` يجعل الإرسال يفشل (لتجربة إعادة المحاولة).
+- التفاصيل: `docs/architecture/09-phase-6b-dashboard-ui.md`.
+
 ## الاختبارات
 
 ```bash
-pytest -q                               # unit + api (بدون قاعدة بيانات)
+pytest -q                               # unit + api (بدون قاعدة بيانات؛ لا يتأثر بتحميل .env في الـ shell)
 OWNER_URL=postgresql://app_owner:$APP_OWNER_PASSWORD@127.0.0.1:5432/agentdb \
 APP_USER_URL=postgresql://app_user:$APP_USER_PASSWORD@127.0.0.1:5432/agentdb \
 ADMIN_URL=postgresql://app_admin:$APP_ADMIN_PASSWORD@127.0.0.1:5432/agentdb \
