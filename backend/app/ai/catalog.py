@@ -427,14 +427,15 @@ async def insert_drafts(s: Any, import_id: UUID, packages: list[DraftPackage]) -
         departure_ids: dict[str, UUID] = {}
         for d in pkg.departures:
             departure_ids[d.ref] = (await s.execute(aq.INSERT_PACKAGE_DEPARTURE, {
-                "package_id": pid, "depart_date": d.depart_date.isoformat(),
-                "return_date": d.return_date.isoformat(), "seats_total": d.seats_total,
+                # asyncpg يستنتج النوع من CAST => كائنات date و Decimal وليس نصوصاً
+                "package_id": pid, "depart_date": d.depart_date,
+                "return_date": d.return_date, "seats_total": d.seats_total,
                 "notes": d.notes})).scalar_one()
         for p in pkg.prices:
             await s.execute(aq.INSERT_PACKAGE_PRICE, {
                 "package_id": pid,
                 "departure_id": departure_ids[p.departure_ref] if p.departure_ref else None,
-                "room_type": p.room_type, "traveler_type": p.traveler_type, "amount": str(p.amount),
+                "room_type": p.room_type, "traveler_type": p.traveler_type, "amount": p.amount,
                 "notes": p.notes})
     return ids
 

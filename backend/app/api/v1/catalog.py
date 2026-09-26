@@ -180,7 +180,7 @@ async def update_price(price_id: UUID, body: PriceUpdate, ctx: TenantContext = D
         if p["package_status"] != "draft":
             raise _not_draft()
         row = (await s.execute(aq.UPDATE_PRICE, {
-            "id": price_id, "amount": str(body.amount) if body.amount is not None else None,
+            "id": price_id, "amount": body.amount,
             "set_notes": "notes" in body.model_fields_set,
             "notes": (body.notes or "").strip() or None})).mappings().one()
     return dict(row)
