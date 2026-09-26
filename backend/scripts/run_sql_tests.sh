@@ -33,8 +33,8 @@ psql "$APP_USER_URL" -X -q -f tests/sql/10_password_reset_as_app_user.sql
 # ---- المرحلة 6: Inbox + Leads + Realtime (الاستعلامات الحقيقية من الكود كـ PREPARE)
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 PY="${PYTHON:-python}"
-"$PY" scripts/gen_prepared_sql.py app.dashboard.queries > "$TMP/dash.sql"
-"$PY" scripts/gen_prepared_sql.py app.db.queries ENQUEUE_OUTBOUND,INSERT_AGENT_RUN > "$TMP/db.sql"
+"$PY" -m scripts.gen_prepared_sql app.dashboard.queries > "$TMP/dash.sql"
+"$PY" -m scripts.gen_prepared_sql app.db.queries ENQUEUE_OUTBOUND,INSERT_AGENT_RUN > "$TMP/db.sql"
 psql "$OWNER_URL" -X -q -c "INSERT INTO memberships (tenant_id, user_id, role) VALUES
     ('aaaaaaaa-0000-0000-0000-000000000001', '99999999-0000-0000-0000-000000000003', 'agent');
   INSERT INTO staff_users (id, tenant_id, user_id, full_name, role) VALUES
