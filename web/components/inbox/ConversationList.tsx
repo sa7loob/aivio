@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, Badge, EmptyState, ErrorState, SkeletonRows, Spinner } from "@/components/ui";
+import { Alert, Avatar, Badge, EmptyState, ErrorState, SkeletonRows, Spinner } from "@/components/ui";
 import { CHANNEL_LABEL, initials, localPhone, shortTime } from "@/lib/format";
 import type { ConversationItem } from "@/lib/types";
 
@@ -108,6 +108,7 @@ export function ConversationList(props: {
           })}
         {status === "ready" && props.hasMore && (
           <div style={{ padding: 12, textAlign: "center" }}>
+            {props.error && <Alert>{props.error}</Alert>}
             <button className="btn btn-sm" onClick={props.onLoadMore} disabled={props.loadingMore}>
               {props.loadingMore ? <Spinner /> : "تحميل المزيد"}
             </button>
