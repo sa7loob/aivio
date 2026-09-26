@@ -20,10 +20,13 @@ OpenAI:
 - GET  /__mock/stats               => عدادات + آخر prompt/لغة/اسم ملف للتفريغ
 - POST /__mock/fail-sends {"on": true|false}
 - POST /__mock/transcript {"text": "...", "delay_seconds": 0}   (التأخير لتجربة انتظار البوت للتفريغ)
+- POST /__mock/media {"path": "/path/voice.ogg"}   => التنزيلات تعيد هذا الملف الحقيقي بدل الصوت الوهمي
+  (لتجربة التفريغ بموديل OpenAI الحقيقي: اترك META_GRAPH_BASE_URL على هذا الخادم واحذف OPENAI_BASE_URL)
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import time
@@ -38,9 +41,20 @@ _lock = threading.Lock()
 STATE: dict[str, Any] = {
     "chat_calls": 0, "sends": 0, "fail_sends": False, "extractions": 0, "transcriptions": 0,
     "media_downloads": 0, "transcript_text": "السلام عليكم، قداش عمرة رمضان للعيلة؟ نبو نسافروا من طرابلس",
-    "last_transcription": None, "transcript_delay_seconds": 0.0,
+    "last_transcription": None, "transcript_delay_seconds": 0.0, "media_path": None,
 }
 FAKE_OGG = b"OggS" + b"\x00" * 4092          # يكفي لاجتياز فحص الصيغة؛ المحتوى لا يُفرَّغ فعلاً
+_AUDIO_TYPES = {".ogg": "audio/ogg", ".opus": "audio/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+                ".mp4": "audio/mp4", ".wav": "audio/wav", ".webm": "audio/webm"}
+
+
+def _media() -> tuple[bytes, str]:
+    path = STATE["media_path"]
+    if not path:
+        return FAKE_OGG, "audio/ogg"
+    with open(path, "rb") as f:
+        return f.read(), _AUDIO_TYPES.get(path[path.rfind("."):].lower(), "application/octet-stream")
+
 
 LEAD_ARGS = {"full_name": "سالم الورفلي", "adults": 2, "children": 1, "room_type_pref": "triple",
              "preferred_period": "عمرة رمضان", "city": "مصراتة", "notes": "يبي فندق قريب من الحرم"}
@@ -149,14 +163,16 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/__media/"):
             with _lock:
                 STATE["media_downloads"] += 1
-            return self._send(200, FAKE_OGG, "audio/ogg")
+            data, ctype = _media()
+            return self._send(200, data, ctype)
         last = path.rsplit("/", 1)[-1]
         if last.startswith("MOCKMEDIA"):
             if "expired" in last:
                 return self._json(404, {"error": {"message": "media not found (mock)", "code": 100}})
             host = self.headers.get("Host", "127.0.0.1:8099")
+            data, ctype = _media()
             return self._json(200, {"id": last, "url": f"http://{host}/__media/{last}",
-                                    "mime_type": "audio/ogg; codecs=opus", "file_size": len(FAKE_OGG)})
+                                    "mime_type": ctype, "file_size": len(data)})
         self._json(200, {"id": last, "display_phone_number": "+218 91 000 0000", "verified_name": "Mock"})
 
     def do_POST(self) -> None:  # noqa: N802
@@ -178,6 +194,13 @@ class Handler(BaseHTTPRequestHandler):
             with _lock:
                 STATE["fail_sends"] = bool(body.get("on"))
             return self._json(200, {"fail_sends": STATE["fail_sends"]})
+        if self.path == "/__mock/media":
+            path = body.get("path")
+            if path and not (os.path.isfile(path) and os.path.getsize(path) > 0):
+                return self._json(400, {"error": "file not found or empty"})
+            with _lock:
+                STATE["media_path"] = path or None
+            return self._json(200, {"media_path": STATE["media_path"]})
         if self.path == "/__mock/transcript":
             with _lock:
                 if "text" in body:
