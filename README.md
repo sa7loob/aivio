@@ -4,7 +4,7 @@
 
 - `backend/` — FastAPI + PostgreSQL (RLS متعدد المستأجرين)، الـ Agent، الـ worker، الفوترة بالدينار الليبي. انظر `backend/README.md`.
 - `web/` — لوحة التحكم (Next.js، عربي RTL، تعمل على الجوال): المحادثات اللحظية والاستلام من البوت، طلبات الحجز، الفريق والدعوات، القنوات.
-- `docs/architecture/` — المعمارية والقرارات لكل مرحلة (01–09).
+- `docs/architecture/` — المعمارية والقرارات لكل مرحلة (01–10).
 - `docs/HANDOFF.md` — الحالة الحالية وما التالي.
 - `CLAUDE.md` — قواعد العمل على المشروع.
 
@@ -33,6 +33,7 @@ npm run dev                                 # http://localhost:3000
 | الأمر | ماذا يختبر |
 |---|---|
 | `cd backend && pytest -q` | unit + api |
-| `cd backend && ./scripts/run_sql_tests.sh` | RLS، والمال، و Inbox/Leads، و NOTIFY. يحتاج `OWNER_URL` و `APP_USER_URL` و `ADMIN_URL` |
+| `cd backend && ./scripts/run_sql_tests.sh` | RLS، والمال، و Inbox/Leads، و NOTIFY، وطابور الذكاء الاصطناعي والبروشور والمعرفة. يحتاج `OWNER_URL` و `APP_USER_URL` و `ADMIN_URL` |
+| `cd backend && ./scripts/dev_try_7a.sh` | تجربة 7a كاملة مع البديل المحلي (الوثيقة 10، قسم «التجربة») |
 | `cd web && npm run typecheck && npm run build` | الواجهة |
 | `cd web && OWNER_URL=... node e2e/dashboard.e2e.js` | اللوحة مع الباكيند الحقيقي. يحتاج Playwright |
