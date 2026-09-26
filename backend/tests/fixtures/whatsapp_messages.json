@@ -1,0 +1,80 @@
+{
+ "object": "whatsapp_business_account",
+ "entry": [
+  {
+   "id": "WABA-1",
+   "changes": [
+    {
+     "field": "messages",
+     "value": {
+      "messaging_product": "whatsapp",
+      "metadata": {
+       "display_phone_number": "15550000000",
+       "phone_number_id": "PNID-NOOR-TEST"
+      },
+      "contacts": [
+       {
+        "profile": {
+         "name": "أبو محمد"
+        },
+        "wa_id": "218913334444"
+       }
+      ],
+      "messages": [
+       {
+        "from": "218913334444",
+        "id": "wamid.AAA1",
+        "timestamp": "1790000000",
+        "type": "text",
+        "text": {
+         "body": "السلام عليكم"
+        }
+       },
+       {
+        "from": "218913334444",
+        "id": "wamid.AAA2",
+        "timestamp": "1790000002",
+        "type": "text",
+        "text": {
+         "body": "قداش عمرة رمضان؟"
+        }
+       },
+       {
+        "from": "218913334444",
+        "id": "wamid.AAA3",
+        "timestamp": "1790000003",
+        "type": "interactive",
+        "interactive": {
+         "type": "button_reply",
+         "button_reply": {
+          "id": "b1",
+          "title": "نعم"
+         }
+        }
+       },
+       {
+        "from": "218913334444",
+        "id": "wamid.AAA4",
+        "timestamp": "1790000004",
+        "type": "image",
+        "image": {
+         "id": "MEDIA1",
+         "caption": "صورة الجواز",
+         "mime_type": "image/jpeg"
+        }
+       },
+       {
+        "from": "218913334444",
+        "timestamp": "1790000005",
+        "type": "text",
+        "text": {
+         "body": "بدون id"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}
