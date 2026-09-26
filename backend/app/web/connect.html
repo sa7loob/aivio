@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ربط القنوات</title>
+<!-- صفحة مؤقتة لربط القنوات حتى إطلاق لوحة التحكم (المرحلة 6). كل المنطق في الـ API. -->
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#667085; --line:#e4e7ec;
+          --accent:#0f766e; --danger:#b42318; --ok:#067647; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --card:#171a21; --text:#e6e8ec; --muted:#98a2b3; --line:#2a2f3a;
+            --accent:#2dd4bf; --danger:#f97066; --ok:#47cd89; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; background:var(--bg);
+         color:var(--text); line-height:1.6; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; } h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  p.muted, .muted { color: var(--muted); font-size: .92rem; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-top:16px; }
+  label { display:block; font-size:.9rem; margin:10px 0 4px; }
+  input, select { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+                  background:transparent; color:inherit; font:inherit; }
+  button { font:inherit; padding:10px 16px; border-radius:8px; border:1px solid var(--accent);
+           background:var(--accent); color:#fff; cursor:pointer; margin-top:12px; }
+  button.secondary { background:transparent; color:var(--accent); }
+  button:disabled { opacity:.55; cursor:not-allowed; }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .alert { padding:10px 12px; border-radius:8px; margin-top:12px; font-size:.92rem; }
+  .alert.error { background: color-mix(in srgb, var(--danger) 12%, transparent); color:var(--danger); }
+  .alert.ok { background: color-mix(in srgb, var(--ok) 12%, transparent); color:var(--ok); }
+  ul.channels { list-style:none; padding:0; margin:0; }
+  ul.channels li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
+  ul.channels li:last-child { border-bottom:0; }
+  .badge { font-size:.8rem; padding:2px 8px; border-radius:999px; border:1px solid var(--line); white-space:nowrap; flex-shrink:0; }
+  .badge.active { color:var(--ok); border-color:var(--ok); } .badge.needs_reauth { color:var(--danger); border-color:var(--danger); }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ربط قنوات المحادثة</h1>
+  <p class="muted">اربط واتساب وماسنجر وإنستغرام الخاصة بنشاطك باش يبدأ المساعد الذكي يرد على زبائنك.</p>
+
+  <section id="auth" hidden aria-labelledby="auth-title">
+    <h2 id="auth-title">الدخول لحسابك</h2>
+    <p id="invite-note" class="muted" hidden>عندك دعوة للانضمام لنشاط. ادخل لحسابك أو أنشئ حساب جديد وحتنضاف تلقائياً.</p>
+    <form id="login-form">
+      <label for="l-email">البريد الإلكتروني</label><input id="l-email" type="email" autocomplete="email" required>
+      <label for="l-pass">كلمة المرور</label><input id="l-pass" type="password" autocomplete="current-password" required>
+      <div class="row"><button type="submit">دخول</button>
+        <button type="button" class="secondary" id="show-register">حساب جديد</button></div>
+    </form>
+    <form id="register-form" hidden>
+      <label for="r-name">اسمك</label><input id="r-name" required minlength="2">
+      <div id="r-business-wrap"><label for="r-business">اسم النشاط</label><input id="r-business" required minlength="2"></div>
+      <label for="r-phone">رقم واتساب لإشعارات الزبائن (اختياري)</label><input id="r-phone" inputmode="tel" placeholder="091xxxxxxx">
+      <label for="r-email">البريد الإلكتروني</label><input id="r-email" type="email" autocomplete="email" required>
+      <label for="r-pass">كلمة المرور (10 أحرف على الأقل)</label><input id="r-pass" type="password" autocomplete="new-password" required minlength="10">
+      <div class="row"><button type="submit">إنشاء الحساب</button>
+        <button type="button" class="secondary" id="show-login">عندي حساب</button></div>
+    </form>
+  </section>
+
+  <section id="reset" hidden aria-labelledby="reset-title">
+    <h2 id="reset-title">تعيين كلمة مرور جديدة</h2>
+    <form id="reset-form">
+      <label for="n-pass">كلمة المرور الجديدة (10 أحرف على الأقل)</label>
+      <input id="n-pass" type="password" autocomplete="new-password" required minlength="10">
+      <button type="submit">حفظ</button>
+    </form>
+  </section>
+
+  <section id="workspace" hidden aria-live="polite">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2 id="tenant-name" style="margin:0"></h2>
+      <button type="button" class="secondary" id="logout" style="margin:0">خروج</button>
+    </div>
+    <label for="tenant-select" id="tenant-select-label" hidden>النشاط</label>
+    <select id="tenant-select" hidden></select>
+
+    <h2 style="margin-top:20px">القنوات المربوطة</h2>
+    <p id="channels-empty" class="muted" hidden>ما فيش قنوات مربوطة لتوا.</p>
+    <ul class="channels" id="channels"></ul>
+
+    <div class="row">
+      <button type="button" id="connect-wa">ربط واتساب</button>
+      <button type="button" id="connect-wa-coex" class="secondary">ربط رقم يعمل على تطبيق واتساب بزنس</button>
+      <button type="button" id="connect-fb" class="secondary">ربط فيسبوك / إنستغرام</button>
+    </div>
+
+    <div id="pages-picker" hidden>
+      <h2 style="margin-top:20px">اختر الصفحات</h2>
+      <div id="pages"></div>
+      <button type="button" id="connect-pages">ربط الصفحات المختارة</button>
+    </div>
+  </section>
+
+  <div id="message" role="status"></div>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let tenantId = null, fbReady = null, fbSession = null;
+  const params = new URLSearchParams(location.search);
+  const inviteToken = params.get("invite");
+  const resetToken = params.get("reset");
+  if (inviteToken) {
+    $("invite-note").hidden = false; $("r-business-wrap").hidden = true;
+    $("r-business").required = false;
+    history.replaceState(null, "", location.pathname);      // لا يبقى التوكن في شريط العنوان
+  }
+  async function acceptInviteIfAny() {
+    if (!inviteToken) return;
+    try { await api("/team/invitations/accept", { method: "POST", body: { token: inviteToken } }); show("تمت إضافتك للنشاط."); }
+    catch (err) { show(err.code === "invalid_invitation" ? "الدعوة غير صالحة أو منتهية" : err.message, "error"); }
+  }
+
+  const ERRORS = {
+    invalid_credentials: "البريد أو كلمة المرور غير صحيحة",
+    invalid_invitation: "الدعوة غير صالحة أو منتهية",
+    invalid_reset_token: "الرابط غير صالح أو مستخدم أو منتهي. اطلب رابط جديد من الدعم",
+    too_many_attempts: "محاولات كثيرة، حاول بعد ربع ساعة",
+    email_or_slug_taken: "البريد مستخدم من قبل",
+    channel_owned_by_another_tenant: "هذا الرقم أو الصفحة مربوطة بحساب آخر. تواصل مع الدعم.",
+    code_exchange_failed: "ما قدرناش نكمل الربط مع Meta، حاول مرة ثانية",
+    meta_step_failed: "صار خطأ من Meta أثناء الربط. تقدر تعيد المحاولة.",
+    insufficient_role: "هذي العملية لصاحب الحساب أو المدير فقط",
+    onboarding_session_expired: "انتهت مهلة الربط، ابدأ من جديد",
+  };
+
+  function show(text, kind = "ok") {
+    const box = $("message");
+    box.className = "alert " + kind;
+    box.textContent = text;
+  }
+
+  async function api(path, { method = "GET", body } = {}) {
+    const headers = { "Content-Type": "application/json" };
+    if (tenantId) headers["X-Tenant-ID"] = tenantId;
+    const res = await fetch("/api/v1" + path, {
+      method, headers, credentials: "same-origin", body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const d = data.detail || data;
+      const code = (d && d.error) || "error";
+      throw Object.assign(new Error(ERRORS[code] || (d && d.message) || "صار خطأ، حاول مرة ثانية"),
+                          { code, status: res.status, data: d });
+    }
+    return data;
+  }
+
+  function busy(btn, on) { if (btn) btn.disabled = on; }
+
+  // ------------------------------------------------------------- auth
+  $("show-register").onclick = () => { $("login-form").hidden = true; $("register-form").hidden = false; };
+  $("show-login").onclick = () => { $("login-form").hidden = false; $("register-form").hidden = true; };
+
+  $("login-form").onsubmit = async (e) => {
+    e.preventDefault(); const btn = e.submitter; busy(btn, true);
+    try { await api("/auth/login", { method: "POST", body: { email: $("l-email").value, password: $("l-pass").value } });
+          await acceptInviteIfAny(); await boot(); }
+    catch (err) { show(err.message, "error"); } finally { busy(btn, false); }
+  };
+
+  $("register-form").onsubmit = async (e) => {
+    e.preventDefault(); const btn = e.submitter; busy(btn, true);
+    try {
+      await api("/auth/register", { method: "POST", body: {
+        email: $("r-email").value, password: $("r-pass").value, full_name: $("r-name").value,
+        business_name: inviteToken ? null : $("r-business").value, invite_token: inviteToken || null,
+        phone: $("r-phone").value || null } });
+      show("تم إنشاء الحساب. اربط قنواتك الآن."); await boot();
+    } catch (err) { show(err.message, "error"); } finally { busy(btn, false); }
+  };
+
+  $("logout").onclick = async () => { await api("/auth/logout", { method: "POST" }).catch(() => {}); location.reload(); };
+
+  // ------------------------------------------------------------- workspace
+  const STATUS = { active: "متصلة", needs_reauth: "تحتاج إعادة ربط", paused: "موقوفة", disconnected: "مفصولة" };
+  const CHANNEL = { whatsapp: "واتساب", messenger: "ماسنجر", instagram: "إنستغرام" };
+
+  async function loadChannels() {
+    const list = $("channels"); list.innerHTML = "";
+    const channels = await api("/channels");
+    $("channels-empty").hidden = channels.length > 0;
+    for (const c of channels) {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      const value = document.createElement("bdi");            // أرقام وأسماء لاتينية داخل نص عربي
+      value.textContent = c.display_name || c.external_id;
+      name.append(`${CHANNEL[c.channel] || c.channel} — `, value);
+      const badge = document.createElement("span");
+      badge.className = "badge " + c.status; badge.textContent = STATUS[c.status] || c.status;
+      li.append(name, badge); list.append(li);
+    }
+  }
+
+  async function boot() {
+    try {
+      const me = await api("/me");
+      $("auth").hidden = true; $("workspace").hidden = false;
+      const sel = $("tenant-select"); sel.innerHTML = "";
+      for (const t of me.tenants) { const o = document.createElement("option"); o.value = t.tenant_id; o.textContent = t.name; sel.append(o); }
+      sel.hidden = $("tenant-select-label").hidden = me.tenants.length < 2;
+      tenantId = me.tenants[0] ? me.tenants[0].tenant_id : null;
+      $("tenant-name").textContent = me.tenants[0] ? me.tenants[0].name : "";
+      sel.onchange = async () => { tenantId = sel.value; $("tenant-name").textContent = sel.selectedOptions[0].textContent; await loadChannels(); };
+      if (tenantId) await loadChannels();
+    } catch (err) {
+      if (err.status === 401) { $("auth").hidden = false; $("workspace").hidden = true; }
+      else show(err.message, "error");
+    }
+  }
+
+  // ------------------------------------------------------------- Facebook SDK
+  function loadSdk(appId, version) {
+    if (fbReady) return fbReady;
+    fbReady = new Promise((resolve) => {
+      window.fbAsyncInit = () => { FB.init({ appId, autoLogAppEvents: true, xfbml: false, version }); resolve(); };
+      const s = document.createElement("script");
+      s.src = "https://connect.facebook.net/en_US/sdk.js"; s.async = true; s.defer = true; s.crossOrigin = "anonymous";
+      document.body.append(s);
+    });
+    return fbReady;
+  }
+
+  // بيانات Embedded Signup تصل كرسالة من نافذة Meta (waba_id, phone_number_id)
+  let esData = null;
+  window.addEventListener("message", (event) => {
+    if (!/(^|\.)facebook\.com$/.test(new URL(event.origin).hostname)) return;
+    try {
+      const msg = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+      if (msg && msg.type === "WA_EMBEDDED_SIGNUP" && String(msg.event || "").startsWith("FINISH")) esData = msg.data;
+      if (msg && msg.type === "WA_EMBEDDED_SIGNUP" && msg.event === "CANCEL") show("تم إلغاء الربط.", "error");
+    } catch (_) { /* رسائل أخرى من SDK */ }
+  });
+
+  async function connectWhatsApp(coexistence, btn) {
+    busy(btn, true); esData = null;
+    try {
+      const start = await api("/onboarding/whatsapp/start", { method: "POST" });
+      await loadSdk(start.app_id, start.graph_api_version);
+      FB.login(async (resp) => {
+        const code = resp && resp.authResponse && resp.authResponse.code;
+        if (!code) { show("ما تمش الربط.", "error"); busy(btn, false); return; }
+        // الـ code صالح لثوانٍ: نرسله فوراً. ننتظر قليلاً وصول بيانات الرقم إن تأخرت الرسالة
+        for (let i = 0; i < 20 && !esData; i++) await new Promise((r) => setTimeout(r, 100));
+        if (!esData) { show("ما وصلتناش بيانات الرقم من Meta. حاول مرة ثانية.", "error"); busy(btn, false); return; }
+        try {
+          const r = await api(`/onboarding/whatsapp/${start.session_id}/complete`, { method: "POST", body: {
+            state: start.state, code, waba_id: esData.waba_id, phone_number_id: esData.phone_number_id, coexistence } });
+          show(`تم ربط واتساب: ${r.display_name || ""}. ${r.next || ""}`);
+          await loadChannels();
+        } catch (err) { show(err.message, "error"); }
+        finally { busy(btn, false); }
+      }, {
+        config_id: start.config_id, response_type: "code", override_default_response_type: true,
+        extras: { setup: {}, featureType: coexistence ? "whatsapp_business_app_onboarding" : "", sessionInfoVersion: "3" },
+      });
+    } catch (err) { show(err.message, "error"); busy(btn, false); }
+  }
+
+  $("connect-wa").onclick = (e) => connectWhatsApp(false, e.currentTarget);
+  $("connect-wa-coex").onclick = (e) => connectWhatsApp(true, e.currentTarget);
+
+  $("connect-fb").onclick = async (e) => {
+    const btn = e.currentTarget; busy(btn, true);
+    try {
+      const start = await api("/onboarding/facebook/start", { method: "POST" });
+      await loadSdk(start.app_id, start.graph_api_version);
+      FB.login(async (resp) => {
+        const code = resp && resp.authResponse && resp.authResponse.code;
+        if (!code) { show("ما تمش الربط.", "error"); busy(btn, false); return; }
+        try {
+          const r = await api(`/onboarding/facebook/${start.session_id}/complete`, { method: "POST", body: { state: start.state, code } });
+          fbSession = start.session_id;
+          const box = $("pages"); box.innerHTML = "";
+          if (!r.pages.length) { show("ما لقيناش صفحات تديرها بهذا الحساب.", "error"); return; }
+          for (const p of r.pages) {
+            const id = "p-" + p.id;
+            const wrap = document.createElement("div");
+            const cb = Object.assign(document.createElement("input"), { type: "checkbox", id, value: p.id, checked: true });
+            cb.style.width = "auto";
+            const lb = Object.assign(document.createElement("label"), { htmlFor: id });
+            lb.style.display = "inline"; lb.style.marginInlineStart = "8px";
+            lb.textContent = p.name + (p.instagram ? ` + إنستغرام @${p.instagram.username}` : "");
+            wrap.append(cb, lb); box.append(wrap);
+          }
+          $("pages-picker").hidden = false;
+        } catch (err) { show(err.message, "error"); }
+        finally { busy(btn, false); }
+      }, { config_id: start.config_id, response_type: "code", override_default_response_type: true });
+    } catch (err) { show(err.message, "error"); busy(btn, false); }
+  };
+
+  $("connect-pages").onclick = async (e) => {
+    const btn = e.currentTarget; busy(btn, true);
+    const ids = [...document.querySelectorAll("#pages input:checked")].map((i) => i.value);
+    try {
+      const r = await api(`/onboarding/facebook/${fbSession}/connect`, { method: "POST", body: { page_ids: ids, include_instagram: true } });
+      const failed = r.channels.filter((c) => !["created", "updated"].includes(c.outcome));
+      show(failed.length ? `تم ربط بعض القنوات، وفشل ${failed.length}.` : "تم ربط الصفحات بنجاح.", failed.length ? "error" : "ok");
+      $("pages-picker").hidden = true; await loadChannels();
+    } catch (err) { show(err.message, "error"); } finally { busy(btn, false); }
+  };
+
+  $("reset-form").onsubmit = async (e) => {
+    e.preventDefault(); const btn = e.submitter; busy(btn, true);
+    try {
+      await api("/auth/password-reset", { method: "POST", body: { token: resetToken, new_password: $("n-pass").value } });
+      $("reset").hidden = true; $("auth").hidden = false;
+      show("تم تغيير كلمة المرور. ادخل بكلمة المرور الجديدة.");
+    } catch (err) { show(err.message, "error"); } finally { busy(btn, false); }
+  };
+
+  if (resetToken) {
+    history.replaceState(null, "", location.pathname);      // لا يبقى التوكن في شريط العنوان
+    $("reset").hidden = false;
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>

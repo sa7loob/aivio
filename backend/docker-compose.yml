@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set in .env}
+      POSTGRES_DB: agentdb
+      APP_OWNER_PASSWORD: ${APP_OWNER_PASSWORD:?set in .env}
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD:?set in .env}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?set in .env}
+    ports:
+      - "127.0.0.1:5432:5432"   # لا تفتح المنفذ على الإنترنت
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agentdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    environment:
+      MIGRATIONS_DATABASE_URL: postgresql+psycopg://app_owner:${APP_OWNER_PASSWORD}@postgres:5432/agentdb
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/agentdb
+    ports:
+      - "127.0.0.1:8000:8000"   # يُعرض للإنترنت عبر Caddy (إنتاج) أو tunnel (تطوير)
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.worker.runner"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/agentdb
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    stop_grace_period: 20s     # ينهي الدفعة الحالية بعد SIGTERM
+
+  # لوحة الإدارة الداخلية: منفذ محلي فقط (الوصول عبر SSH tunnel / VPN)
+  admin-api:
+    build: .
+    command: ["uvicorn", "app.admin.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app_user:${APP_USER_PASSWORD}@postgres:5432/agentdb
+      ADMIN_DATABASE_URL: postgresql+asyncpg://app_admin:${APP_ADMIN_PASSWORD}@postgres:5432/agentdb
+    ports:
+      - "127.0.0.1:8001:8001"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
