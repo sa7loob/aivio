@@ -322,6 +322,7 @@ input.ltr {
   display: grid;
   grid-template-columns: var(--sidebar) 1fr;
   height: 100vh;
+  height: 100dvh; /* الجوال: لا يختفي شريط الكتابة خلف شريط عنوان المتصفح */
 }
 .sidebar {
   background: var(--surface);
@@ -400,6 +401,7 @@ input.ltr {
 .inbox {
   display: grid;
   grid-template-columns: 360px 1fr;
+  flex: 1;
   height: 100%;
   min-height: 0;
 }
@@ -620,8 +622,21 @@ table.table {
 .table tbody tr {
   cursor: pointer;
 }
-.table tbody tr:hover {
+.table tbody tr:hover,
+.table tbody tr[aria-selected="true"] {
   background: var(--surface-2);
+}
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+.date-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.filters .date-field .input {
+  min-width: 0;
+  width: 150px;
 }
 
 .drawer-backdrop {
@@ -703,6 +718,42 @@ table.table {
 .list-row:last-child {
   border-bottom: none;
 }
+.team-grid {
+  align-items: start;
+}
+.invite-result {
+  padding: 16px;
+}
+.welcome {
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.welcome p {
+  margin: 6px 0 12px;
+  color: var(--text-2);
+}
+.channel-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--text-3);
+}
+.channel-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.ch-whatsapp { background: #25a35a; }
+.ch-messenger { background: #1877f2; }
+.ch-instagram { background: #c13584; }
+.channel-row {
+  flex-wrap: wrap;
+}
 
 /* ---------------------------------------------------------------- mobile */
 @media (max-width: 900px) {
@@ -750,5 +801,15 @@ table.table {
   }
   .bubble {
     max-width: 86%;
+  }
+  .hide-sm {
+    display: none;
+  }
+  .filters .input,
+  .filters .select {
+    flex: 1 1 140px;
+  }
+  .kv {
+    grid-template-columns: 100px 1fr;
   }
 }
