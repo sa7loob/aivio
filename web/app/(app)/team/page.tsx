@@ -90,7 +90,7 @@ export default function TeamPage() {
     try {
       setInvites({ kind: "ready", data: await api<Invitation[]>("/api/v1/team/invitations") });
     } catch (err) {
-      setInvites({ kind: "error", message: errorMessage(err) });
+      setInvites((cur) => (quiet && cur.kind === "ready" ? cur : { kind: "error", message: errorMessage(err) }));
     }
   }, []);
 

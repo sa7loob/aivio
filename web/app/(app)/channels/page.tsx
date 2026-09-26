@@ -25,7 +25,8 @@ function ChannelsView() {
     try {
       setState({ kind: "ready", data: await api<ChannelAccount[]>("/api/v1/channels") });
     } catch (err) {
-      setState({ kind: "error", message: errorMessage(err) });
+      // تحديث صامت فشل (مثلاً عند الرجوع للتبويب): نُبقي القائمة المعروضة
+      setState((cur) => (quiet && cur.kind === "ready" ? cur : { kind: "error", message: errorMessage(err) }));
     }
   }, []);
 
