@@ -48,11 +48,13 @@ def suggest_knowledge(messages_oldest_first: Iterable[Mapping[str, Any]],
         staff_idx = [i for i in staff_idx if msgs[i]["id"] == staff_message_id]
     if not staff_idx:
         return None
+    # الجواب = كتلة ردود الموظف المتتالية التي فيها الرد المختار (قد يجيب في أكثر من رسالة).
+    # معرّف الكتلة = أول رسالة فيها => اختيار أي رسالة من نفس الكتلة يعطي نفس المعلومة (بدون تكرار)
     target = staff_idx[-1]
-
-    # الجواب: رد الموظف + ردوده المتتالية بعده مباشرة (قبل رسالة الزبون التالية)
-    answer_parts = [_text(msgs[target])]
-    for m in msgs[target + 1:]:
+    while target > 0 and msgs[target - 1]["direction"] == "outbound" and msgs[target - 1]["sender_type"] == "staff":
+        target -= 1
+    answer_parts: list[str] = []
+    for m in msgs[target:]:
         if m["direction"] == "inbound":
             break
         if m["sender_type"] == "staff" and _text(m):
