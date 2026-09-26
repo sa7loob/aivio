@@ -83,6 +83,21 @@ class Settings(BaseSettings):
     lead_template_name: str = "new_lead"
     lead_template_language: str = "ar"
 
+    # --- المرحلة 7a: مهام الذكاء الاصطناعي في الخلفية (ai_jobs)
+    worker_ai_batch: int = 5
+    worker_ai_lease_seconds: int = 180
+    # تفريغ الرسائل الصوتية
+    voice_transcription_enabled: bool = True
+    transcription_model: str = "gpt-4o-transcribe"
+    transcription_language: str = "ar"
+    transcription_max_wait_seconds: float = 45.0   # أقصى تأخير لرد البوت بانتظار التفريغ
+    voice_max_bytes: int = 3_000_000               # أكبر من هذا => لا تفريغ (حد للتكلفة)
+    media_tmp_dir: str | None = None               # ملفات صوت مؤقتة تُحذف بعد التفريغ (الافتراضي: /tmp)
+    # البروشور => كتالوج مسودة
+    catalog_extraction_model: str = "gpt-4o"
+    catalog_extraction_max_output_tokens: int = 8000
+    catalog_import_max_bytes: int = 10_000_000
+
 
 @lru_cache
 def get_settings() -> Settings:

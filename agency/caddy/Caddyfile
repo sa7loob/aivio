@@ -1,0 +1,22 @@
+# HTTPS تلقائي من Let's Encrypt لكل نطاق عميل (يكفي سجل DNS واحد: *.bots.example.ly => IP السيرفر).
+{
+	email {$ACME_EMAIL}
+}
+
+# لكل عميل: الـ webhooks مفتوحة (Meta يستدعيها)، وكل شيء آخر (محرر n8n) خلف كلمة مرور إضافية.
+# الاستخدام: import n8n_client <اسم خدمة n8n>
+(n8n_client) {
+	@webhooks path /webhook/* /webhook-test/*
+	handle @webhooks {
+		reverse_proxy {args[0]}:5678
+	}
+	handle {
+		basic_auth {
+			{$EDITOR_USER} {$EDITOR_HASH}
+		}
+		reverse_proxy {args[0]}:5678
+	}
+	header -Server
+}
+
+# ---- العملاء (يضيفها scripts/new-client.sh) ----

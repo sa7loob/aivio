@@ -20,6 +20,8 @@ from typing import Any
 from uuid import UUID
 
 from app.agent.core import FALLBACK_REPLY, Agent
+from app.ai import queries as aq
+from app.ai.transcription import POLL_SECONDS, transcription_blocks_reply
 from app.agent.history import build_history
 from app.agent.types import (
     AgentInput,
@@ -139,6 +141,14 @@ async def _take_snapshot(settings: Settings, tenant_id: UUID, conversation_id: U
                 await s.execute(q.MARK_MESSAGES_HANDLED, {"ids": pending_ids})
             await s.execute(q.CLEAR_CONVERSATION_DUE, clear)
             return None
+
+        # رسالة صوتية ما زال تفريغها جارياً => نؤجل الرد قليلاً حتى يفهمها البوت (حتى حد أقصى)
+        if any(p["msg_type"] == "audio" and not p["text_content"] for p in pending):
+            waiting = (await s.execute(aq.PENDING_TRANSCRIPTIONS, {"ids": pending_ids})).mappings().all()
+            if transcription_blocks_reply(waiting, now, settings.transcription_max_wait_seconds):
+                await s.execute(aq.DEFER_REPLY, {"conversation_id": conversation_id,
+                                                 "claimed_due": claimed_due, "seconds": POLL_SECONDS})
+                return None
 
         t = (await s.execute(q.LOAD_TENANT_PROFILE)).mappings().one()
         history = (await s.execute(q.LOAD_HISTORY, {

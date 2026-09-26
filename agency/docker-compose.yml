@@ -1,0 +1,77 @@
+# وكالة الأتمتة: Caddy (HTTPS تلقائي) + Postgres مشترك + نسخة n8n مستقلة لكل عميل.
+# كل عميل = حاوية n8n + قاعدة بيانات ومستخدم خاصان به + مفتاح تشفير خاص + نطاق فرعي.
+# أضف عميلاً بـ ./scripts/new-client.sh <اسم>  (يضيف خدمته في آخر هذا الملف تلقائياً).
+
+x-n8n: &n8n
+  image: n8nio/n8n:2.40.7               # ثبّت الإصدار؛ رقّ الكل معاً بعد تجربة الإصدار الجديد على عميل واحد
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment:
+    N8N_PROTOCOL: https
+    N8N_PORT: "5678"
+    N8N_LISTEN_ADDRESS: 0.0.0.0         # IPv4 داخل شبكة Docker (الافتراضي :: يفشل إن كان IPv6 معطلاً)
+    N8N_PROXY_HOPS: "1"                 # خلف Caddy: يثق بـ X-Forwarded-For من طبقة واحدة فقط
+    GENERIC_TIMEZONE: ${TZ}
+    TZ: ${TZ}
+    DB_TYPE: postgresdb
+    DB_POSTGRESDB_HOST: postgres
+    DB_POSTGRESDB_SCHEMA: n8n           # جداول n8n الداخلية؛ بيانات البوت في public بنفس قاعدة العميل
+    N8N_DEFAULT_BINARY_DATA_MODE: filesystem   # الملفات (الرسائل الصوتية) على القرص وليس في الذاكرة
+    EXECUTIONS_DATA_PRUNE: "true"       # سجل التنفيذ فيه رسائل الزبائن: يُحذف تلقائياً
+    EXECUTIONS_DATA_MAX_AGE: ${EXECUTIONS_MAX_AGE_HOURS}
+    EXECUTIONS_DATA_PRUNE_MAX_COUNT: "20000"
+    N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"      # الـ workflows لا تقرأ متغيرات البيئة (كلمة سر القاعدة، مفتاح التشفير)
+    N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+    N8N_COMMUNITY_PACKAGES_ENABLED: "false"
+    N8N_DIAGNOSTICS_ENABLED: "false"
+    N8N_PERSONALIZATION_ENABLED: "false"
+    N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+    N8N_HIRING_BANNER_ENABLED: "false"
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz/readiness >/dev/null || exit 1"]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 60s
+  mem_limit: ${N8N_MEM_LIMIT}           # عميل معطوب لا يستهلك ذاكرة الآخرين
+  logging: &logging
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  caddy:
+    image: caddy:2.11
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL}
+      EDITOR_USER: ${EDITOR_USER}
+      EDITOR_HASH: ${EDITOR_HASH}
+    volumes:
+      - ./caddy:/etc/caddy:ro              # المجلد وليس الملف: التعديل يظهر داخل الحاوية دائماً
+      - ./data/caddy:/data                # الشهادات: لا تحذفه (حدود إصدار Let's Encrypt)
+      - ./data/caddy-config:/config
+    logging: *logging
+
+  postgres:
+    image: pgvector/pgvector:pg17       # Postgres 17 (n8n 2.x يطلب 17+) + pgvector لقاعدة معرفة لاحقاً
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+    logging: *logging
+
+  # ---- العملاء: كل خدمة هنا يضيفها scripts/new-client.sh (لا تضف شيئاً بعد هذا السطر يدوياً) ----

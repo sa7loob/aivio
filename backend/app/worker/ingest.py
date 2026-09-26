@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from app.ai import queries as aq
+from app.ai.transcription import audio_source
 from app.channels.base import InboundMessage
 from app.channels.messenger import is_own_echo
 from app.channels.registry import parser_for
@@ -152,6 +154,10 @@ async def _store_inbound(settings: Settings, account: ResolvedAccount,
             "platform_ts": msg.timestamp,
             "debounce_seconds": settings.reply_debounce_seconds,
         })
+        # رسالة صوتية => مهمة تفريغ في نفس الـ transaction (الرد ينتظرها حتى حد أقصى)
+        if (msg.type == "audio" and settings.voice_transcription_enabled
+                and audio_source(msg.channel, msg.raw) is not None):
+            await s.execute(aq.ENQUEUE_TRANSCRIPTION, {"message_id": inserted})
         log.info("ingest: tenant=%s conversation=%s message=%s type=%s",
                  account.tenant_id, conv["id"], inserted, msg.type)
 

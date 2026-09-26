@@ -1,6 +1,6 @@
 # Libya AI Commerce Agent — Backend
 
-المرحلة 2: قاعدة البيانات · المرحلة 3: النواة الخلفية + واتساب · المرحلة 4: الـ Agent · المرحلة 4.5: لوحة الإدارة والمحفظة الليبية · المرحلة 5: الهوية والربط الذاتي
+المرحلة 2: قاعدة البيانات · المرحلة 3: النواة الخلفية + واتساب · المرحلة 4: الـ Agent · المرحلة 4.5: لوحة الإدارة والمحفظة الليبية · المرحلة 5: الهوية والربط الذاتي · المرحلة 6a: API اللوحة · المرحلة 7a: الصوت والبروشور والمعرفة من ردود الموظفين
 
 ## الهيكل
 
@@ -16,30 +16,31 @@ app/
   channels/registry.py     object type -> parser ، channel -> sender
   db/tenant.py             tenant_session / system_session
   db/queries.py            كل SQL المستخدم في مكان واحد
-  worker/runner.py         3 حلقات: ingest / reply / send
+  worker/runner.py         الحلقات: ingest / reply / send / voice / ai (+ billing و channel-health دورياً)
   worker/ingest.py         webhook_events -> contacts/conversations/messages (+debounce)
   worker/reply.py          محادثات مستحقة -> Agent -> outbound_messages (بدون tx أثناء الـ LLM)
   worker/sender.py         outbound_messages -> WhatsApp Cloud API
   llm/base.py              عقود LLM محايدة (ChatMessage, ToolCall, LLMClient)
-  llm/openai_client.py     OpenAI SDK: chat + embeddings
+  llm/openai_client.py     OpenAI SDK: chat + embeddings + تفريغ الصوت + استخراج JSON من صورة/PDF
   agent/core.py            حلقة LLM <-> الأدوات
   agent/tools.py           search_packages, get_package_details, search_knowledge, create_lead, handoff_to_human
   agent/prompts.py         System prompt باللهجة الليبية
   agent/history.py         تحويل الرسائل المخزنة إلى تاريخ المحادثة
   agent/knowledge_ingest   تقطيع + embeddings + إدخال في knowledge_chunks
 evals/                     cases.yaml + run.py (تقييم بالموديل الحقيقي)
-migrations/versions/       0001..0011
+migrations/versions/       0001..0012
 app/admin/                 Admin API الداخلي (tenants, channels, billing, vouchers)
 app/billing/               رموز القسائم + تحويل أخطاء المال إلى HTTP
 app/identity/              كلمات المرور (scrypt) والجلسات + SQL الهوية
 app/onboarding/            الربط الذاتي: Embedded Signup + Facebook Login
-app/api/v1/                auth / team / onboarding / channels / inbox / leads / events
+app/api/v1/                auth / team / onboarding / channels / inbox / leads / events / catalog / knowledge
 app/dashboard/             SQL ومنطق اللوحة (Inbox + Leads)  ·  app/realtime/  LISTEN/NOTIFY -> SSE
+app/ai/                    المرحلة 7a: طابور ai_jobs، تفريغ الصوت، البروشور -> مسودات، ردود الموظفين -> معرفة
 app/channels/messenger.py  ماسنجر + إنستغرام (parsers + sender)
 app/web/connect.html       صفحة الربط المؤقتة (/connect)
 docs/phases/               وثائق المراحل
 scripts/                   register_whatsapp_channel ، ingest_knowledge ، run_sql_tests.sh
-scripts/dev_*              للتطوير فقط: بديل Meta + OpenAI (dev_mock_upstream) ، webhook موقّع (dev_send_whatsapp)
+scripts/dev_*              للتطوير فقط: بديل Meta + OpenAI (dev_mock_upstream) ، webhook موقّع (dev_send_whatsapp) ، تجربة 7a (dev_try_7a.sh)
 tests/unit, tests/api      pytest ، tests/sql اختبارات قاعدة البيانات
 ```
 
@@ -134,6 +135,24 @@ GET  /api/v1/events?tenant=<id>            # SSE (EventSource)
 
 البحث `q` في المحادثات والطلبات يقبل الرقم بأي صيغة محلية (`0913334444` أو `091 333 4444` أو `00218...`).
 
+## المرحلة 7a: بوت يفهم ويتعلّم
+
+```bash
+alembic upgrade head        # 0012: ai_jobs + catalog_imports
+# الـ worker يفرّغ الرسائل الصوتية تلقائياً (حلقة voice) ويستخرج البروشورات ويحسب الـ embeddings (حلقة ai)
+POST /api/v1/catalog/imports?filename=brochure.jpg   (الملف = جسم الطلب، Content-Type: image/jpeg|png|webp أو application/pdf)
+GET  /api/v1/catalog/imports/{id}                     # الحالة + التحذيرات + البرامج المسودة
+PATCH /api/v1/catalog/prices/{id}  ·  DELETE /api/v1/catalog/prices/{id} | departures/{id} | packages/{id}   (مسودات فقط)
+POST /api/v1/catalog/packages/{id}/publish            # بعده فقط يراه البوت
+GET  /api/v1/conversations/{id}/knowledge-suggestion  ·  POST /api/v1/conversations/{id}/knowledge {question, answer}
+GET  /api/v1/knowledge?source=staff  ·  DELETE /api/v1/knowledge/{id}
+```
+
+- الإعدادات (كلها بقيم افتراضية): `VOICE_TRANSCRIPTION_ENABLED`، `TRANSCRIPTION_MODEL`، `TRANSCRIPTION_MAX_WAIT_SECONDS`، `MEDIA_TMP_DIR`، `CATALOG_EXTRACTION_MODEL`، `CATALOG_IMPORT_MAX_BYTES`.
+- الصوت لا يُخزَّن أبداً: ملف مؤقت 0600 يُحذف بعد التفريغ، ويبقى النص فقط.
+- تجربة كاملة محلياً بأمر واحد: `./scripts/dev_try_7a.sh [brochure.jpg]`.
+- القرارات، والتحقق، وأوامر التجربة (ومنها التجربة بموديل OpenAI الحقيقي): `docs/architecture/10-phase-7-smart-sales-and-ingestion.md`.
+
 ## التجربة المحلية بدون Meta و OpenAI (للتطوير فقط)
 
 ```bash
@@ -147,6 +166,7 @@ export META_GRAPH_BASE_URL=http://127.0.0.1:8099 OPENAI_BASE_URL=http://127.0.0.
 - البديل يرد باللهجة الليبية، و«احجز» في رسالة الزبون تستدعي `create_lead`.
 - `GET /__mock/stats` يعيد عدد استدعاءات الـ LLM والإرسال.
 - `POST /__mock/fail-sends {"on": true}` يجعل الإرسال يفشل (لتجربة إعادة المحاولة).
+- رسالة صوتية: `dev_send_whatsapp --audio MOCKMEDIA-1` بدل `--text`. `POST /__mock/transcript {"text", "delay_seconds"}` يحدد نص التفريغ وتأخيره، و`POST /__mock/media {"path"}` يعيد ملف صوت حقيقياً عند التنزيل.
 - التفاصيل: `docs/architecture/09-phase-6b-dashboard-ui.md`.
 
 ## الاختبارات
@@ -156,8 +176,10 @@ pytest -q                               # unit + api (بدون قاعدة بيا
 OWNER_URL=postgresql://app_owner:$APP_OWNER_PASSWORD@127.0.0.1:5432/agentdb \
 APP_USER_URL=postgresql://app_user:$APP_USER_PASSWORD@127.0.0.1:5432/agentdb \
 ADMIN_URL=postgresql://app_admin:$APP_ADMIN_PASSWORD@127.0.0.1:5432/agentdb \
-./scripts/run_sql_tests.sh              # RLS + البحث + المال + Inbox/Leads + NOTIFY (يحتاج python لتوليد PREPARE)
+./scripts/run_sql_tests.sh              # RLS + البحث + المال + Inbox/Leads + NOTIFY + ai_jobs/البروشور/المعرفة (يحتاج python لتوليد PREPARE)
 ```
+
+شغّل اختبارات SQL على قاعدة فارغة بعد `alembic upgrade head`، وبدون worker يعمل عليها. بعض الفحوص تعدّ الصفوف في كل القاعدة (مثل T8)، فتفشل على قاعدة فيها بيانات تجربة.
 
 ## الأدوار
 
