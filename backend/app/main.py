@@ -12,8 +12,10 @@ from sqlalchemy import text
 
 from app.api.meta_callbacks import router as meta_callbacks_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.catalog import router as catalog_router
 from app.api.v1.events import router as events_router
 from app.api.v1.inbox import router as inbox_router
+from app.api.v1.knowledge import router as knowledge_router
 from app.api.v1.leads import router as leads_router
 from app.api.v1.onboarding import router as onboarding_router
 from app.api.webhooks import router as webhooks_router
@@ -58,6 +60,8 @@ def create_app() -> FastAPI:
     app.include_router(inbox_router)
     app.include_router(leads_router)
     app.include_router(events_router)
+    app.include_router(catalog_router)
+    app.include_router(knowledge_router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:
