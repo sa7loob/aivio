@@ -282,37 +282,39 @@ export function Thread({ conversationId, onBack }: { conversationId: string; onB
           <div style={{ fontWeight: 600 }} className="truncate">{name}</div>
           <div className="faint row" style={{ gap: 6 }}>
             <span>{CHANNEL_LABEL[conv.channel] ?? conv.channel}</span>
-            {conv.contact_phone && <span className="ltr">{localPhone(conv.contact_phone)}</span>}
+            {conv.contact_phone && <span className="ltr nowrap">{localPhone(conv.contact_phone)}</span>}
           </div>
         </div>
-        <select className="select" style={{ width: "auto", height: 32 }} aria-label="إسناد المحادثة"
-          value={conv.assigned_user_id ?? ""} disabled={busy !== null || conv.mode === "closed"}
-          onChange={(e) => void assign(e.target.value)}>
-          <option value="">غير مسندة</option>
-          {conv.assigned_user_id && !assignOptions.some((s) => s.user_id === conv.assigned_user_id) && (
-            <option value={conv.assigned_user_id}>{conv.assigned_name ?? "موظف"}</option>
+        <div className="thread-actions">
+          <select className="select" style={{ width: "auto", height: 32 }} aria-label="إسناد المحادثة"
+            value={conv.assigned_user_id ?? ""} disabled={busy !== null || conv.mode === "closed"}
+            onChange={(e) => void assign(e.target.value)}>
+            <option value="">غير مسندة</option>
+            {conv.assigned_user_id && !assignOptions.some((s) => s.user_id === conv.assigned_user_id) && (
+              <option value={conv.assigned_user_id}>{conv.assigned_name ?? "موظف"}</option>
+            )}
+            {assignOptions.map((s) => (
+              <option key={s.id} value={s.user_id ?? ""}>
+                {s.user_id === me.user.id ? `أنا (${s.full_name})` : s.full_name}
+              </option>
+            ))}
+          </select>
+          {conv.mode === "bot" && (
+            <button className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void act("takeover")}>
+              {busy === "takeover" ? <Spinner /> : "استلام المحادثة"}
+            </button>
           )}
-          {assignOptions.map((s) => (
-            <option key={s.id} value={s.user_id ?? ""}>
-              {s.user_id === me.user.id ? `أنا (${s.full_name})` : s.full_name}
-            </option>
-          ))}
-        </select>
-        {conv.mode === "bot" && (
-          <button className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => void act("takeover")}>
-            {busy === "takeover" ? <Spinner /> : "استلام المحادثة"}
-          </button>
-        )}
-        {conv.mode === "human" && (
-          <button className="btn btn-sm" disabled={busy !== null} onClick={() => void act("release")}>
-            {busy === "release" ? <Spinner /> : "إرجاع للبوت"}
-          </button>
-        )}
-        {conv.mode !== "closed" && (
-          <button className="btn btn-sm btn-ghost" disabled={busy !== null} onClick={() => void act("close")}>
-            {busy === "close" ? <Spinner /> : "إغلاق"}
-          </button>
-        )}
+          {conv.mode === "human" && (
+            <button className="btn btn-sm" disabled={busy !== null} onClick={() => void act("release")}>
+              {busy === "release" ? <Spinner /> : "إرجاع للبوت"}
+            </button>
+          )}
+          {conv.mode !== "closed" && (
+            <button className="btn btn-sm btn-ghost" disabled={busy !== null} onClick={() => void act("close")}>
+              {busy === "close" ? <Spinner /> : "إغلاق"}
+            </button>
+          )}
+        </div>
       </header>
 
       {conv.mode === "human" && (
@@ -364,7 +366,8 @@ export function Thread({ conversationId, onBack }: { conversationId: string; onB
           </div>
         )}
         <div className="composer-row">
-          <textarea rows={1} placeholder={composerDisabled ? "لا يمكن الإرسال الآن" : "اكتب ردك... (Enter للإرسال، Shift+Enter لسطر جديد)"}
+          <textarea rows={1} placeholder={composerDisabled ? "لا يمكن الإرسال الآن" : "اكتب ردك..."}
+            title="Enter للإرسال، Shift+Enter لسطر جديد"
             value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown}
             disabled={composerDisabled} maxLength={4000} aria-label="نص الرد" />
           <button className="btn btn-primary" onClick={submit} disabled={composerDisabled || !text.trim()} aria-label="إرسال">
