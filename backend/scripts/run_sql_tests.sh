@@ -51,4 +51,17 @@ n() { grep -c "$1" "$TMP/notify.out" || true; }
 [ "$(n 'tenant_events')" -eq 4 ]             || { cat "$TMP/notify.out"; echo "FAIL T2 worker-only update must not notify"; exit 1; }
 if grep -q "NOTIFY-TEST\|218917778888" "$TMP/notify.out"; then echo "FAIL T3 notify leaked data"; exit 1; fi
 echo "PASS T1-T3 realtime NOTIFY: ids only, per event type, no noise from worker fields"
+
+# ---- المرحلة 7a: ai_jobs + التفريغ الصوتي + استيراد الكتالوج + معلومات الموظفين
+"$PY" -m scripts.gen_prepared_sql app.ai.queries > "$TMP/ai.sql"
+"$PY" -m scripts.gen_prepared_sql app.db.queries TOOL_KNOWLEDGE_FTS > "$TMP/kb.sql"
+psql "$APP_USER_URL" -X -q -v ai_sql="$TMP/ai.sql" -v kb_sql="$TMP/kb.sql" \
+     -f tests/sql/13_ai_catalog_knowledge_as_app_user.sql
+psql "$OWNER_URL" -X -q -f tests/sql/14_ai_jobs_suspended_as_owner.sql
+psql "$APP_USER_URL" -X -q -f tests/sql/15_transcript_notify_as_app_user.sql > "$TMP/notify7.out" 2>&1
+n7() { grep -c "$1" "$TMP/notify7.out" || true; }
+[ "$(n7 tenant_events)" -eq 1 ] && grep -q '"type" : "message"' "$TMP/notify7.out" \
+  || { cat "$TMP/notify7.out"; echo "FAIL V3 transcript notify"; exit 1; }
+if grep -q "TRANSCRIPT-NOTIFY-TEST" "$TMP/notify7.out"; then echo "FAIL V3 notify leaked text"; exit 1; fi
+echo "PASS V3 transcript update notifies the dashboard (ids only); other message updates do not"
 echo "✔ database tests passed"
