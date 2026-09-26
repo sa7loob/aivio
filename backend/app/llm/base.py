@@ -62,3 +62,33 @@ class EmbeddingClient(Protocol):
     model: str
 
     async def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+@dataclass(frozen=True)
+class Transcript:
+    text: str
+    usage: Usage = field(default_factory=Usage)
+    model: str = ""
+
+
+class TranscriptionClient(Protocol):
+    """صوت (ملف على القرص) => نص. prompt: كلمات متوقعة (أسماء برامج، مدن) لتحسين الدقة."""
+    model: str
+
+    async def transcribe(self, *, audio_path: str, prompt: str | None,
+                         language: str | None) -> Transcript: ...
+
+
+@dataclass(frozen=True)
+class StructuredResult:
+    data: dict[str, Any]
+    usage: Usage = field(default_factory=Usage)
+    model: str = ""
+
+
+class DocumentExtractor(Protocol):
+    """صورة أو PDF => JSON يطابق schema (Structured Outputs)."""
+    model: str
+
+    async def extract(self, *, system: str, instruction: str, document: bytes, mime_type: str,
+                      schema_name: str, schema: dict[str, Any]) -> StructuredResult: ...

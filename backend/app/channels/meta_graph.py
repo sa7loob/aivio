@@ -51,6 +51,33 @@ class MetaGraphClient:
     async def subscribe_waba(self, waba_id: str, token: str) -> dict[str, Any]:
         return await self._call("POST", f"{waba_id}/subscribed_apps", token)
 
+    async def get_media(self, media_id: str, token: str) -> dict[str, Any]:
+        """وسائط واتساب الواردة: {url, mime_type, file_size, sha256}. الرابط صالح لدقائق فقط."""
+        return await self._call("GET", media_id, token)
+
+    async def download(self, url: str, token: str | None, *, max_bytes: int) -> tuple[bytes, str | None]:
+        """تنزيل ملف (رابط وسائط واتساب يحتاج التوكن؛ مرفقات ماسنجر لا).
+        يتوقف فور تجاوز max_bytes دون تنزيل الباقي."""
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        try:
+            async with self._http.stream("GET", url, headers=headers) as resp:
+                if resp.status_code >= 400:
+                    raise MetaGraphError(f"media download failed: http {resp.status_code}",
+                                         retryable=resp.status_code >= 500 or resp.status_code == 429,
+                                         code="media_download", http_status=resp.status_code)
+                declared = int(resp.headers.get("content-length") or 0)
+                if declared > max_bytes:
+                    raise MetaGraphError(f"media too large: {declared} bytes", retryable=False, code="too_large")
+                buf = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    buf += chunk
+                    if len(buf) > max_bytes:
+                        raise MetaGraphError(f"media too large: >{max_bytes} bytes", retryable=False,
+                                             code="too_large")
+                return bytes(buf), resp.headers.get("content-type")
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            raise MetaGraphError(f"network error: {type(exc).__name__}", retryable=True, code="network") from exc
+
     # ---------------------------------------------------------------- Messenger / Instagram
     async def get_page(self, page_id: str, token: str) -> dict[str, Any]:
         return await self._call("GET", page_id, token, {

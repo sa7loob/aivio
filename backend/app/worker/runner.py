@@ -1,9 +1,11 @@
 """Worker process:  python -m app.worker.runner
 
-ثلاث حلقات مستقلة تعمل بالتوازي في نفس العملية:
-    ingest  : webhook_events         -> messages (+ debounce)
+حلقات مستقلة تعمل بالتوازي في نفس العملية:
+    ingest  : webhook_events         -> messages (+ debounce، ومهمة تفريغ للرسائل الصوتية)
     reply   : conversations المستحقة -> outbound_messages
     send    : outbound_messages      -> WhatsApp Cloud API
+    voice   : ai_jobs (transcribe)   -> نص الرسالة الصوتية (حساسة لزمن الرد، منفصلة)
+    ai      : ai_jobs (catalog_extract, embed_knowledge) -> مسودات الكتالوج / embeddings
 
 يمكن تشغيل أكثر من نسخة من الـ worker بأمان (FOR UPDATE SKIP LOCKED + leases).
 """
@@ -26,9 +28,15 @@ from app.agent.tools import default_registry
 from app.core.config import Settings, get_settings
 from app.llm.openai_client import (
     OpenAIChatClient,
+    OpenAIDocumentExtractor,
     OpenAIEmbeddingClient,
+    OpenAITranscriptionClient,
     create_openai_sdk_client,
 )
+from app.ai.catalog import CatalogExtractHandler
+from app.ai.jobs import BACKGROUND_KINDS, VOICE_KINDS, AIDeps, JobHandler, run_ai_batch
+from app.ai.knowledge import EmbedKnowledgeHandler
+from app.ai.transcription import TranscribeHandler, media_tmp_dir, sweep_tmp_dir
 from app.core.logging import setup_logging
 from app.db.tenant import dispose_engine
 from app.worker.ingest import run_ingest_batch
@@ -61,18 +69,38 @@ async def _loop(name: str, step: Callable[[], Awaitable[int]], settings: Setting
     log.info("%s loop stopped", name)
 
 
-def build_reply_deps(settings: Settings) -> ReplyDeps:
+def create_sdk(settings: Settings):
     if settings.openai_api_key is None:
         raise SystemExit("OPENAI_API_KEY is required for the worker")
-    sdk = create_openai_sdk_client(settings.openai_api_key.get_secret_value(),
-                                   timeout=settings.llm_timeout_seconds,
-                                   max_retries=settings.llm_max_retries)
+    return create_openai_sdk_client(settings.openai_api_key.get_secret_value(),
+                                    timeout=settings.llm_timeout_seconds,
+                                    max_retries=settings.llm_max_retries)
+
+
+def build_reply_deps(settings: Settings, sdk) -> ReplyDeps:
     llm = OpenAIChatClient(sdk, model=settings.llm_model, temperature=settings.llm_temperature,
                            max_output_tokens=settings.llm_max_output_tokens)
     embedder = OpenAIEmbeddingClient(sdk, model=settings.embedding_model,
                                      dimensions=settings.embedding_dimensions)
     agent = Agent(llm, default_registry(), max_iterations=settings.agent_max_tool_iterations)
     return ReplyDeps(settings=settings, agent=agent, embedder=embedder)
+
+
+def build_ai_deps(settings: Settings, sdk, graph: MetaGraphClient) -> AIDeps:
+    return AIDeps(
+        settings=settings, graph=graph,
+        transcriber=OpenAITranscriptionClient(sdk, model=settings.transcription_model),
+        extractor=OpenAIDocumentExtractor(sdk, model=settings.catalog_extraction_model,
+                                          max_output_tokens=settings.catalog_extraction_max_output_tokens),
+        embedder=OpenAIEmbeddingClient(sdk, model=settings.embedding_model,
+                                       dimensions=settings.embedding_dimensions),
+    )
+
+
+VOICE_HANDLERS: dict[str, JobHandler] = {"transcribe": TranscribeHandler()}
+BACKGROUND_HANDLERS: dict[str, JobHandler] = {"catalog_extract": CatalogExtractHandler(),
+                                              "embed_knowledge": EmbedKnowledgeHandler()}
+assert set(VOICE_HANDLERS) == set(VOICE_KINDS) and set(BACKGROUND_HANDLERS) == set(BACKGROUND_KINDS)
 
 
 BILLING_TICK_SECONDS = 3600
@@ -103,7 +131,11 @@ async def _periodic(name: str, fn: Callable[[], Awaitable[None]], every: float,
 async def main() -> None:
     settings = get_settings()
     setup_logging(settings.log_level)
-    reply_deps = build_reply_deps(settings)   # فشل مبكر إذا نقص مفتاح الـ API
+    sdk = create_sdk(settings)                # فشل مبكر إذا نقص مفتاح الـ API
+    reply_deps = build_reply_deps(settings, sdk)
+    swept = sweep_tmp_dir(media_tmp_dir(settings))
+    if swept:
+        log.warning("voice: removed %d stale temp audio file(s)", swept)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -123,6 +155,8 @@ async def main() -> None:
         graph = MetaGraphClient(http, base_url=settings.meta_graph_base_url,
                                 api_version=settings.meta_graph_api_version)
 
+        ai_deps = build_ai_deps(settings, sdk, graph)
+
         async def health_tick() -> None:
             await run_channel_health_tick(graph, settings)
 
@@ -132,6 +166,8 @@ async def main() -> None:
                 tg.create_task(_loop("ingest", lambda: run_ingest_batch(settings), settings, stop))
                 tg.create_task(_loop("reply", lambda: run_reply_batch(reply_deps), settings, stop))
                 tg.create_task(_loop("send", lambda: run_send_batch(settings, senders), settings, stop))
+                tg.create_task(_loop("voice", lambda: run_ai_batch(ai_deps, VOICE_HANDLERS), settings, stop))
+                tg.create_task(_loop("ai", lambda: run_ai_batch(ai_deps, BACKGROUND_HANDLERS), settings, stop))
                 tg.create_task(_periodic("billing", run_billing_tick, BILLING_TICK_SECONDS, stop))
                 tg.create_task(_periodic("channel-health", health_tick, HEALTH_TICK_SECONDS, stop))
         finally:
