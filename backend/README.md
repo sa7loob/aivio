@@ -179,6 +179,8 @@ ADMIN_URL=postgresql://app_admin:$APP_ADMIN_PASSWORD@127.0.0.1:5432/agentdb \
 ./scripts/run_sql_tests.sh              # RLS + البحث + المال + Inbox/Leads + NOTIFY + ai_jobs/البروشور/المعرفة (يحتاج python لتوليد PREPARE)
 ```
 
+شغّل اختبارات SQL على قاعدة فارغة بعد `alembic upgrade head`، وبدون worker يعمل عليها. بعض الفحوص تعدّ الصفوف في كل القاعدة (مثل T8)، فتفشل على قاعدة فيها بيانات تجربة.
+
 ## الأدوار
 
 | الدور | الاستخدام | RLS |
