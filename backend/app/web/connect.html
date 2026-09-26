@@ -207,8 +207,11 @@
       const sel = $("tenant-select"); sel.innerHTML = "";
       for (const t of me.tenants) { const o = document.createElement("option"); o.value = t.tenant_id; o.textContent = t.name; sel.append(o); }
       sel.hidden = $("tenant-select-label").hidden = me.tenants.length < 2;
-      tenantId = me.tenants[0] ? me.tenants[0].tenant_id : null;
-      $("tenant-name").textContent = me.tenants[0] ? me.tenants[0].name : "";
+      // ?tenant= من لوحة التحكم: نفس النشاط المفتوح هناك (وإلا الأول)
+      const current = me.tenants.find((t) => t.tenant_id === params.get("tenant")) || me.tenants[0];
+      tenantId = current ? current.tenant_id : null;
+      if (tenantId) sel.value = tenantId;
+      $("tenant-name").textContent = current ? current.name : "";
       sel.onchange = async () => { tenantId = sel.value; $("tenant-name").textContent = sel.selectedOptions[0].textContent; await loadChannels(); };
       if (tenantId) await loadChannels();
     } catch (err) {
