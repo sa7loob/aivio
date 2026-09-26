@@ -23,6 +23,7 @@ from app.dashboard.logic import (
     decode_cursor,
     leads_to_csv,
     next_cursor,
+    normalize_search,
 )
 from app.db import queries as q
 from app.db.tenant import tenant_session
@@ -58,7 +59,7 @@ def filter_params(status_: str | None, assigned: str, package_id: UUID | None, q
         except ValueError:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"error": "invalid_assigned"}) from None
     return {"status": status_, "assigned_mode": mode, "assigned_staff": staff, "package_id": package_id,
-            "q": (q_ or "").strip() or None, "from_date": from_date, "to_date": to_date}
+            "q": normalize_search(q_), "from_date": from_date, "to_date": to_date}
 
 
 @router.get("")

@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import MEMBER, TenantContext
 from app.dashboard import queries as dq
-from app.dashboard.logic import decode_cursor, next_cursor, window_open
+from app.dashboard.logic import decode_cursor, next_cursor, normalize_search, window_open
 from app.db import queries as q
 from app.db.tenant import tenant_session
 
@@ -60,7 +60,7 @@ async def list_conversations(view: View = "open", channel: str | None = None,
     ts, cid = _cursor(cursor)
     async with tenant_session(ctx.tenant_id, ctx.user.id) as s:
         rows = (await s.execute(dq.INBOX_LIST, {
-            "view": view, "channel": channel, "assigned": assigned, "q": (q_ or "").strip() or None,
+            "view": view, "channel": channel, "assigned": assigned, "q": normalize_search(q_),
             "cursor_ts": ts, "cursor_id": cid, "limit": limit})).mappings().all()
     items = [dict(r) for r in rows]
     return {"items": items, "next_cursor": next_cursor(items, limit, "last_message_at")}

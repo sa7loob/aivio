@@ -1,6 +1,6 @@
 """يحوّل استعلامات SQLAlchemy text() في وحدة Python إلى PREPARE statements لـ psql.
 
-الاستخدام:  python scripts/gen_prepared_sql.py app.dashboard.queries [NAME1,NAME2] > /tmp/dash_prepared.sql
+الاستخدام (من مجلد backend):  python -m scripts.gen_prepared_sql app.dashboard.queries [NAME1,NAME2] > /tmp/dash_prepared.sql
 الناتج: `PREPARE <name_lower> AS ...` مع استبدال :param بـ $n (نفس الاسم => نفس الرقم)،
 و`-- params:` قبل كل استعلام بترتيب المعاملات. اختبارات SQL تستدعيها بـ EXECUTE =>
 تُختبر نصوص الاستعلامات الحقيقية كما يرسلها التطبيق (وليس نسخاً منها).

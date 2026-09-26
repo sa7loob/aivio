@@ -11,8 +11,8 @@
 
 ```
 backend/   FastAPI + PostgreSQL (المراحل 1–6a منفذة ومختبرة)
-web/       لوحة التحكم Next.js (المرحلة 6b — قيد التنفيذ، غير مكتملة)
-docs/architecture/  وثائق المعمارية والقرارات لكل مرحلة (01–08)
+web/       لوحة التحكم Next.js (المرحلة 6b منفذة ومختبرة؛ e2e/ للتجربة الشاملة)
+docs/architecture/  وثائق المعمارية والقرارات لكل مرحلة (01–09)
 ```
 
 ## الـ Stack (ثابت، لا يتغير)
@@ -71,10 +71,10 @@ docs/architecture/  وثائق المعمارية والقرارات لكل مر
 ```bash
 # الباكيند
 cd backend && cp .env.example .env        # عبّئ القيم
-docker compose up -d db
+docker compose up -d postgres
 alembic upgrade head
 pytest -q                                  # unit + api
-OWNER_URL=... APP_USER_URL=... ADMIN_URL=... ./scripts/run_sql_tests.sh   # RLS + المال + Inbox + NOTIFY
+OWNER_URL=... APP_USER_URL=... ADMIN_URL=... PYTHON=.venv/bin/python ./scripts/run_sql_tests.sh   # RLS + المال + Inbox + NOTIFY
 uvicorn app.main:app --reload --port 8000
 python -m app.worker.runner                # الـ worker
 
@@ -82,10 +82,12 @@ python -m app.worker.runner                # الـ worker
 cd web && cp .env.example .env.local      # API_URL=http://127.0.0.1:8000
 npm install && npm run typecheck && npm run build
 npm run dev                                # http://localhost:3000
+OWNER_URL=... node e2e/dashboard.e2e.js   # تجربة شاملة مع الباكيند (Playwright)؛ انظر 09-phase-6b
 ```
 
 - `WEB_ALLOWED_ORIGINS` في `.env` الباكيند يجب أن يشمل `http://localhost:3000`.
-- `scripts/run_sql_tests.sh` يحتاج python (يولّد PREPARE من الاستعلامات الحقيقية).
+- `scripts/run_sql_tests.sh` يحتاج python فيه تبعيات الباكيند (`PYTHON=.venv/bin/python`) لأنه يولّد PREPARE من الاستعلامات الحقيقية.
+- بدون Meta أو OpenAI: `python -m scripts.dev_mock_upstream` مع `META_GRAPH_BASE_URL` و`OPENAI_BASE_URL` (للتطوير فقط).
 
 ## Definition of Done لكل مرحلة
 
