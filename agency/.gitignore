@@ -1,4 +1,5 @@
 .env
 clients/*.env
+clients/*.csv
 data/
 backups/

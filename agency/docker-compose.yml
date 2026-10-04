@@ -23,6 +23,7 @@ x-n8n: &n8n
     EXECUTIONS_DATA_MAX_AGE: ${EXECUTIONS_MAX_AGE_HOURS}
     EXECUTIONS_DATA_PRUNE_MAX_COUNT: "20000"
     N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"      # الـ workflows لا تقرأ متغيرات البيئة (كلمة سر القاعدة، مفتاح التشفير)
+    NODE_FUNCTION_ALLOW_BUILTIN: crypto       # Code node: التحقق من توقيع Meta (HMAC) فقط
     N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
     N8N_COMMUNITY_PACKAGES_ENABLED: "false"
     N8N_DIAGNOSTICS_ENABLED: "false"

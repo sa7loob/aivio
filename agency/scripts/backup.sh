@@ -12,9 +12,12 @@ chmod 700 backups "$DEST"
 
 for env_file in clients/*.env; do
   [ -e "$env_file" ] || continue
+  case "$env_file" in *.bot.env) continue ;; esac      # إعدادات البوت تُنسخ مع عميلها تحت
   name=$(basename "$env_file" .env)
   docker compose exec -T postgres pg_dump -U postgres -Fc "$name" > "$DEST/$name.dump"
-  tar -czf "$DEST/$name-files.tar.gz" "data/n8n/$name" "$env_file"
+  extra=()
+  for f in "clients/$name.bot.env" "clients/$name.menu.csv"; do [ -e "$f" ] && extra+=("$f"); done
+  tar -czf "$DEST/$name-files.tar.gz" "data/n8n/$name" "$env_file" "${extra[@]}"
   echo "$(date '+%F %T') $name: $(du -h "$DEST/$name.dump" | cut -f1) db, $(du -h "$DEST/$name-files.tar.gz" | cut -f1) files"
 done
 cp .env "$DEST/agency.env"
