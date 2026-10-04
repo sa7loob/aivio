@@ -1,0 +1,92 @@
+{
+  "id": "botCleanupFlow01",
+  "name": "[System] تنظيف يومي",
+  "nodes": [
+    {
+      "id": "24423c15-fcd4-531a-855e-415388661025",
+      "name": "Every night",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "71687ac5-8778-5c68-903f-43dbe4a35c3b",
+      "name": "Run manually",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "3cfd34cf-6747-5775-8519-8cec525ba891",
+      "name": "Delete old data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH s AS (SELECT history_days FROM bot_settings WHERE id = 1),\n     m AS (DELETE FROM messages\n           WHERE created_at < now() - make_interval(days => COALESCE((SELECT history_days FROM s), 90))\n           RETURNING 1),\n     e AS (DELETE FROM workflow_errors WHERE created_at < now() - make_interval(days => 30) RETURNING 1)\nSELECT (SELECT count(*) FROM m) AS messages_deleted, (SELECT count(*) FROM e) AS errors_deleted",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "botPostgres00001",
+          "name": "DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every night": {
+      "main": [
+        [
+          {
+            "node": "Delete old data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run manually": {
+      "main": [
+        [
+          {
+            "node": "Delete old data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "botErrorsFlow001",
+    "timezone": "Africa/Tripoli"
+  },
+  "active": false,
+  "pinData": {}
+}

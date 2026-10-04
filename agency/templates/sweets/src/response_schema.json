@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reply", "order", "handoff"],
+  "properties": {
+    "reply": { "type": "string" },
+    "order": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "customer_name", "phone", "items", "fulfillment", "address", "needed_at", "notes"],
+      "properties": {
+        "status": { "type": "string", "enum": ["none", "collecting", "complete"] },
+        "customer_name": { "type": ["string", "null"] },
+        "phone": { "type": ["string", "null"] },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["product", "quantity", "unit", "note"],
+            "properties": {
+              "product": { "type": "string" },
+              "quantity": { "type": "number" },
+              "unit": { "type": "string" },
+              "note": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "fulfillment": { "type": ["string", "null"], "enum": ["pickup", "delivery", null] },
+        "address": { "type": ["string", "null"] },
+        "needed_at": { "type": ["string", "null"] },
+        "notes": { "type": ["string", "null"] }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["needed", "reason"],
+      "properties": {
+        "needed": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

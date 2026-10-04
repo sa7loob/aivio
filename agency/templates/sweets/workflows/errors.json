@@ -1,0 +1,58 @@
+{
+  "id": "botErrorsFlow001",
+  "name": "[System] الأخطاء",
+  "nodes": [
+    {
+      "id": "932b9a31-a327-557d-8ad3-618cd7cfc436",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "258b8948-5b9d-521c-9570-bb7f6e10e556",
+      "name": "Log error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow, node, message, execution_id) VALUES ($1, $2, $3, $4)",
+        "options": {
+          "queryReplacement": "={{ [$json.workflow?.name ?? null, $json.execution?.lastNodeExecuted ?? null, String($json.execution?.error?.message ?? $json.trigger?.error?.message ?? 'unknown').slice(0, 2000), $json.execution?.id != null ? String($json.execution.id) : null] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "botPostgres00001",
+          "name": "DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {}
+}
