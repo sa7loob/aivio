@@ -11,7 +11,10 @@ agency/
   clients/<اسم>.env      أسرار كل عميل ومفتاح تشفيره (يولّدها السكربت) ← لا يُرفع لـ git
   data/                  قواعد البيانات، ملفات n8n، شهادات HTTPS        ← لا يُرفع لـ git
   scripts/new-client.sh  إضافة عميل بأمر واحد
+  scripts/deploy-bot.sh  نشر بوت من قالب لعميل (الجداول، القائمة، الـ credentials، الـ workflows)
   scripts/backup.sh      نسخة احتياطية لكل العملاء
+  templates/sweets/      قالب «محل حلويات»: بوت واتساب نص وصوت + تنبيه صاحب المحل (أول عميل: شهرزاد)
+  dev/                   للتجربة فقط: بديل محلي لـ Meta و OpenAI، وتجربة شاملة (e2e.sh)
 ```
 
 ## التشغيل خطوة بخطوة
@@ -84,7 +87,17 @@ docker compose ps                                      # caddy و postgres: runn
 
 رابط الـ webhook الذي تضعه في Meta لهذا العميل يبدأ بـ `https://hajj.bots.example.ly/webhook/...`.
 
-### 6. النسخ الاحتياطي (مرة واحدة)
+### 6. بوت العميل من قالب
+
+```bash
+cp templates/sweets/bot.example.env clients/hajj.bot.env     # عبّئه: Meta و OpenAI ومعلومات المحل
+cp templates/sweets/menu.example.csv clients/hajj.menu.csv   # القائمة والأسعار بالدينار
+./scripts/deploy-bot.sh hajj sweets
+```
+
+خطوات Meta وقالب تنبيه المالك ومتابعة الطلبات: `templates/sweets/README.md`.
+
+### 7. النسخ الاحتياطي (مرة واحدة)
 
 ```bash
 crontab -e
@@ -104,6 +117,8 @@ crontab -e
 | إعادة تشغيل عميل | `docker compose restart n8n-hajj` |
 | استهلاك الذاكرة | `docker stats --no-stream` |
 | عميل جديد | `./scripts/new-client.sh <اسم>` |
+| نشر أو تحديث بوت (بعد تعديل القائمة أو الإعدادات) | `./scripts/deploy-bot.sh <اسم> <قالب>` |
+| تجربة شاملة بدون Meta و OpenAI (على جهازك) | `dev/e2e.sh` |
 
 ### ترقية n8n
 

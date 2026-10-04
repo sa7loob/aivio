@@ -13,6 +13,9 @@
 - **العمل الجديد في `agency/`:**
   - نسخة n8n مستقلة لكل عميل خلف Caddy، مع Postgres مشترك بقاعدة ومستخدم لكل عميل.
   - القرار والمعمارية في `docs/architecture/11-agency-n8n-multi-client.md`، والتشغيل في `agency/README.md`.
+  - **القوالب** في `agency/templates/<قالب>/`. المصدر `src/`، و `build.py` يبني `workflows/*.json` (لا تعدّلها يدوياً).
+    - الاختبار: `node --test agency/templates/sweets/tests/code_nodes.test.js` و `agency/dev/e2e.sh`.
+    - أول قالب: `sweets` (حلويات شهرزاد، الوثيقة 12).
 - **القواعد أدناه** (الـ Stack و RLS والأدوار والدفع) تخص منصة SaaS، وتنطبق فقط إذا عُدّل `backend/` أو `web/`.
 - **ما يبقى سارياً على كل العمل:**
   - الدينار الليبي فقط.
@@ -27,7 +30,7 @@
 ```
 backend/   FastAPI + PostgreSQL (المراحل 1–6a و 7a منفذة ومختبرة؛ متوقف)
 web/       لوحة التحكم Next.js (المرحلة 6b منفذة ومختبرة؛ متوقف)
-docs/architecture/  وثائق المعمارية والقرارات لكل مرحلة (01–11)
+docs/architecture/  وثائق المعمارية والقرارات لكل مرحلة (01–12)
 agency/    الاتجاه الحالي: Docker Compose (Caddy + Postgres + n8n لكل عميل) وسكربتات التشغيل
 ```
 
