@@ -37,6 +37,8 @@ def code(name, pos, file, each=False, **extra):
     js = src(file)
     if "__SYSTEM_PROMPT__" in js:
         js = js.replace("__SYSTEM_PROMPT__", json.dumps(src("system_prompt.txt"), ensure_ascii=False))
+    if "__CONTEXT_PROMPT__" in js:
+        js = js.replace("__CONTEXT_PROMPT__", json.dumps(src("context_prompt.txt"), ensure_ascii=False))
     if "__RESPONSE_SCHEMA__" in js:
         schema = json.loads(src("response_schema.json"))
         js = js.replace("__RESPONSE_SCHEMA__", json.dumps(schema, ensure_ascii=False))
@@ -181,37 +183,77 @@ SELECT CAST($1 AS bigint) AS contact_id,
        EXISTS (SELECT 1 FROM messages
                WHERE contact_id = CAST($1 AS bigint) AND direction = 'in' AND type = 'audio'
                  AND text IS NULL AND NOT media_failed
-                 AND created_at > now() - make_interval(secs => CAST($4 AS int))) AS audio_pending""",
-            ["$json.contact_id", "$json.message_id", "$json.wa_id", S + ".audio_max_wait_seconds"]),
+                 AND created_at > now() - make_interval(secs => CAST($4 AS int))) AS audio_pending,
+       (SELECT count(*) FROM messages
+        WHERE contact_id = CAST($1 AS bigint) AND direction = 'out'
+          AND created_at > now() - make_interval(hours => 1)) < CAST($5 AS int) AS under_limit""",
+            ["$json.contact_id", "$json.message_id", "$json.wa_id", S + ".audio_max_wait_seconds",
+             S + ".max_replies_per_hour"]),
         if_true("Latest message?", (440, y1), "$json.is_latest === true"),
         node("Newer message will answer", "noOp", 1, (660, y1 + 180), {}),
         if_true("Audio still transcribing?", (660, y1), "$json.audio_pending === true"),
         wait("Poll", (880, y1 - 160), "2"),
+        # حماية من الإزعاج والتكلفة: زبون يرسل بلا توقف لا يستهلك أكثر من max_replies_per_hour رداً في الساعة
+        if_true("Under hourly limit?", (880, y1), "$json.under_limit === true"),
+        node("Hourly limit reached", "noOp", 1, (1100, y1 + 180), {}),
 
-        note("ملاحظة: الرد", (1040, y1 - 180), "## 4. الرد\nالقائمة وآخر 24 رسالة من قاعدة العميل → OpenAI (JSON) → "
-             "رد للزبون. فشل OpenAI = اعتذار قصير + تنبيه صاحب المحل.", 1540, 160, 4),
+        note("ملاحظة: الرد", (1040, y1 - 180), "## 4. الرد\nطلب «المنيو» = القائمة من القاعدة بدون OpenAI. غير ذلك: "
+             "القائمة (ثابتة، تُخزَّن عند OpenAI) + السياق والطلب الجاري + آخر الرسائل → OpenAI (JSON) → رد للزبون. "
+             "فشل OpenAI = اعتذار قصير + تنبيه صاحب المحل.", 1640, 160, 4),
+        # آخر history_messages رسالة خلال history_hours فقط (محادثة قديمة لا تُرسل)، والطلب الجاري يحفظ ما قبلها
         sql("Load context", (1100, y1), """
 SELECT c.id AS contact_id, c.wa_id, c.name AS contact_name,
+       CASE WHEN c.current_order_at > now() - make_interval(hours => CAST($2 AS int))
+            THEN c.current_order END AS current_order,
        COALESCE((SELECT json_agg(p ORDER BY p.sort_order, p.id) FROM (
                     SELECT id, category, name, unit, price_lyd, min_qty, description, sort_order
                     FROM products WHERE available) p), CAST('[]' AS json)) AS products,
        COALESCE((SELECT json_agg(h ORDER BY h.id) FROM (
                     SELECT id, direction, type, wa_type, text, media_failed
-                    FROM messages WHERE contact_id = c.id ORDER BY id DESC LIMIT 24) h), CAST('[]' AS json)) AS history
-FROM contacts c WHERE c.id = CAST($1 AS bigint)""", ["$json.contact_id"]),
+                    FROM messages
+                    WHERE contact_id = c.id AND created_at > now() - make_interval(hours => CAST($2 AS int))
+                    ORDER BY id DESC LIMIT CAST($3 AS int)) h), CAST('[]' AS json)) AS history
+FROM contacts c WHERE c.id = CAST($1 AS bigint)""",
+            ["$json.contact_id", S + ".history_hours", S + ".history_messages"]),
         code("Build request", (1320, y1), "build_request.js", each=True),
-        http("OpenAI", (1540, y1), "={{ " + S + ".openai_base_url }}/chat/completions", cred=OAI, method="POST",
+        if_true("Menu request?", (1540, y1), "$json.menu_request === true"),
+        code("Menu messages", (1760, y1 + 200), "menu_messages.js"),
+        http("Send menu", (1980, y1 + 200), WA_SEND_URL, cred=WA, method="POST", timeout=20000,
+             json_body="={{ JSON.stringify($json.body) }}", **RETRY),
+        sql("Save menu reply", (2200, y1 + 200), """
+INSERT INTO messages (contact_id, direction, wa_message_id, type, text)
+SELECT CAST($1 AS bigint), 'out', $2, 'text', $3 WHERE CAST($4 AS int) = 1""", [
+            "$('Menu messages').item.json.contact_id", "$json.messages?.[0]?.id ?? null",
+            "$('Menu messages').item.json.marker", "$('Menu messages').item.json.part"]),
+        http("OpenAI", (1760, y1), "={{ " + S + ".openai_base_url }}/chat/completions", cred=OAI, method="POST",
              json_body="={{ JSON.stringify($json.request) }}", timeout=90000,
              retryOnFail=True, maxTries=3, waitBetweenTries=3000, **ON_ERROR_OUTPUT),
-        code("Parse reply", (1760, y1), "parse_reply.js", each=True),
-        http("Send reply", (1980, y1), WA_SEND_URL, cred=WA, method="POST", timeout=20000, json_body=(
+        code("Parse reply", (1980, y1), "parse_reply.js", each=True),
+        http("Send reply", (2200, y1), WA_SEND_URL, cred=WA, method="POST", timeout=20000, json_body=(
             "={{ JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: $json.wa_id, "
             "type: 'text', text: { preview_url: false, body: $json.reply } }) }}"), **RETRY),
-        sql("Save reply", (2200, y1), """
-INSERT INTO messages (contact_id, direction, wa_message_id, type, text)
-VALUES (CAST($1 AS bigint), 'out', $2, 'text', $3)
-RETURNING id""", ["$('Parse reply').item.json.contact_id", "$json.messages?.[0]?.id ?? null",
-                  "$('Parse reply').item.json.reply"]),
+        # الرد + استهلاك التوكنز، وآخر صورة للطلب الجاري (تبقى كما هي إذا تعطّل OpenAI)
+        sql("Save reply", (2420, y1), """
+WITH m AS (
+    INSERT INTO messages (contact_id, direction, wa_message_id, type, text,
+                          ai_model, prompt_tokens, cached_tokens, completion_tokens)
+    VALUES (CAST($1 AS bigint), 'out', $2, 'text', $3, $4, CAST($5 AS int), CAST($6 AS int), CAST($7 AS int))
+    RETURNING id
+), c AS (
+    UPDATE contacts
+    SET current_order = CASE WHEN CAST($9 AS boolean) THEN CAST($8 AS jsonb) ELSE current_order END,
+        current_order_at = CASE WHEN CAST($9 AS boolean) THEN now() ELSE current_order_at END
+    WHERE id = CAST($1 AS bigint)
+)
+SELECT id FROM m""", [
+            "$('Parse reply').item.json.contact_id", "$json.messages?.[0]?.id ?? null",
+            "$('Parse reply').item.json.reply",
+            "$('Parse reply').item.json.usage.model ?? null",
+            "$('Parse reply').item.json.usage.prompt_tokens ?? null",
+            "$('Parse reply').item.json.usage.cached_tokens ?? null",
+            "$('Parse reply').item.json.usage.completion_tokens ?? null",
+            "$('Parse reply').item.json.order_state ?? null",
+            "$('Parse reply').item.json.ai_ok === true"]),
 
         note("ملاحظة: التنبيه", (-40, y2 - 180), "## 5. تنبيه صاحب المحل\nطلب مكتمل جديد (لا يُكرَّر بفضل fingerprint) "
              "أو زبون يحتاج رداً بشرياً → واتساب لهاتف المالك (قالب معتمد، أو نص داخل نافذة 24 ساعة).",
@@ -253,9 +295,12 @@ RETURNING id AS order_id""", [
         ("Save transcript", "Debounce"), ("Mark audio failed", "Debounce"),
         ("Debounce", "Check turn"), ("Check turn", "Latest message?"),
         ("Latest message?", "Audio still transcribing?"), ("Latest message?", 1, "Newer message will answer"),
-        ("Audio still transcribing?", "Poll"), ("Audio still transcribing?", 1, "Load context"),
+        ("Audio still transcribing?", "Poll"), ("Audio still transcribing?", 1, "Under hourly limit?"),
         ("Poll", "Check turn"),
-        ("Load context", "Build request"), ("Build request", "OpenAI"),
+        ("Under hourly limit?", "Load context"), ("Under hourly limit?", 1, "Hourly limit reached"),
+        ("Load context", "Build request"), ("Build request", "Menu request?"),
+        ("Menu request?", "Menu messages"), ("Menu request?", 1, "OpenAI"),
+        ("Menu messages", "Send menu"), ("Send menu", "Save menu reply"),
         ("OpenAI", "Parse reply"), ("OpenAI", 1, "Parse reply"),
         ("Parse reply", "Send reply"), ("Send reply", "Save reply"),
         ("Save reply", "Order complete?"), ("Save reply", "Handoff?"),

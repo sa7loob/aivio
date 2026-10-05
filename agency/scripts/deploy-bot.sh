@@ -62,15 +62,19 @@ db <<SQL
 \set transcription_model $(q "${TRANSCRIPTION_MODEL:-gpt-4o-transcribe}")
 \set graph_base $(q "${GRAPH_BASE_URL:-}")
 \set openai_base $(q "${OPENAI_BASE_URL:-}")
+\set menu_image $(q "${MENU_IMAGE_URL:-}")
+\set max_replies $(q "${MAX_REPLIES_PER_HOUR:-30}")
 INSERT INTO bot_settings AS s (id, business_name, phone_number_id, meta_app_secret, meta_verify_token, owner_phone,
     owner_template_name, owner_template_lang, opening_hours, address, delivery_info, order_notice,
-    extra_instructions, chat_model, transcription_model, graph_base_url, openai_base_url)
+    extra_instructions, chat_model, transcription_model, graph_base_url, openai_base_url,
+    menu_image_url, max_replies_per_hour)
 VALUES (1, :'business_name', :'phone_number_id', :'app_secret', :'verify_token', :'owner_phone',
     NULLIF(:'owner_template', ''), :'owner_template_lang', NULLIF(:'opening_hours', ''), NULLIF(:'address', ''),
     NULLIF(:'delivery_info', ''), NULLIF(:'order_notice', ''), NULLIF(:'extra', ''), :'chat_model',
     :'transcription_model',
     COALESCE(NULLIF(:'graph_base', ''), 'https://graph.facebook.com/v23.0'),
-    COALESCE(NULLIF(:'openai_base', ''), 'https://api.openai.com/v1'))
+    COALESCE(NULLIF(:'openai_base', ''), 'https://api.openai.com/v1'),
+    NULLIF(:'menu_image', ''), CAST(:'max_replies' AS int))
 ON CONFLICT (id) DO UPDATE SET
     business_name = EXCLUDED.business_name, phone_number_id = EXCLUDED.phone_number_id,
     meta_app_secret = EXCLUDED.meta_app_secret, meta_verify_token = EXCLUDED.meta_verify_token,
@@ -79,7 +83,8 @@ ON CONFLICT (id) DO UPDATE SET
     address = EXCLUDED.address, delivery_info = EXCLUDED.delivery_info, order_notice = EXCLUDED.order_notice,
     extra_instructions = EXCLUDED.extra_instructions, chat_model = EXCLUDED.chat_model,
     transcription_model = EXCLUDED.transcription_model, graph_base_url = EXCLUDED.graph_base_url,
-    openai_base_url = EXCLUDED.openai_base_url, updated_at = now();
+    openai_base_url = EXCLUDED.openai_base_url, menu_image_url = EXCLUDED.menu_image_url,
+    max_replies_per_hour = EXCLUDED.max_replies_per_hour, updated_at = now();
 SQL
 
 echo "== 3) القائمة: $MENU"

@@ -89,6 +89,8 @@ if (data) {
   };
 }
 const orderComplete = order.status === 'complete' && order.items.length > 0;
+// استهلاك التوكنز لكل رد (cached = ما خصمه OpenAI من التخزين المؤقت للبداية الثابتة)
+const usage = $json.usage || {};
 
 return {
   json: {
@@ -102,5 +104,13 @@ return {
     handoff_needed: handoff.needed,
     handoff_reason: handoff.reason,
     ai_ok: Boolean(data),
+    // آخر صورة للطلب تُحفظ للزبون وتُعطى للوكيل في الرسالة التالية (بدل إرسال محادثة أطول)
+    order_state: data && order.items.length ? JSON.stringify(order) : null,
+    usage: {
+      model: $json.model || null,
+      prompt_tokens: Number.isInteger(usage.prompt_tokens) ? usage.prompt_tokens : null,
+      cached_tokens: Number.isInteger(usage.prompt_tokens_details?.cached_tokens) ? usage.prompt_tokens_details.cached_tokens : null,
+      completion_tokens: Number.isInteger(usage.completion_tokens) ? usage.completion_tokens : null,
+    },
   },
 };

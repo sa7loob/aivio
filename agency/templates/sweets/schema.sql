@@ -88,3 +88,25 @@ CREATE TABLE IF NOT EXISTS workflow_errors (
     execution_id text,
     created_at   timestamptz NOT NULL DEFAULT now()
 );
+
+-- ---- ترقيات: أعمدة أُضيفت بعد النسخة الأولى. تُكتب هنا (ADD COLUMN IF NOT EXISTS) حتى تُرقّى
+--      قواعد العملاء القائمة تلقائياً عند إعادة النشر.
+
+-- توفير التوكنز والحماية من الإزعاج
+ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS menu_image_url text;    -- رابط https لصورة المنيو (اختياري)
+ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS history_messages int NOT NULL DEFAULT 12
+    CHECK (history_messages BETWEEN 2 AND 50);                             -- آخر كم رسالة تُرسل للوكيل
+ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS history_hours int NOT NULL DEFAULT 48
+    CHECK (history_hours BETWEEN 1 AND 720);                               -- رسائل أقدم من هذا لا تُرسل
+ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS max_replies_per_hour int NOT NULL DEFAULT 30
+    CHECK (max_replies_per_hour >= 1);                                     -- أقصى ردود لزبون واحد في الساعة
+
+-- آخر صورة للطلب الجاري (يكتبها الوكيل) بدل إرسال محادثة طويلة
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS current_order jsonb;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS current_order_at timestamptz;
+
+-- استهلاك OpenAI لكل رد (للتكلفة الشهرية لكل عميل)
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS ai_model text;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS prompt_tokens int;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS cached_tokens int;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS completion_tokens int;

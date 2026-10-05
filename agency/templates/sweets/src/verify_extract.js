@@ -1,5 +1,5 @@
 // يتحقق من توقيع Meta (X-Hub-Signature-256 بـ App Secret العميل) ثم يستخرج رسائل الزبائن.
-// توقيع خاطئ، أو رقم واتساب غير رقم العميل، أو تحديثات حالة (statuses) => لا شيء يُكمل.
+// توقيع خاطئ، أو رقم واتساب غير رقم العميل، أو تحديثات حالة (statuses) أو تفاعلات => لا شيء يُكمل.
 const crypto = require('crypto');
 const settings = $input.first().json;
 const { raw, signature } = $('Read body').first().json;
@@ -34,6 +34,8 @@ function extract(payload, phoneNumberId) {
       for (const c of value.contacts ?? []) names[c.wa_id] = c.profile?.name ?? null;
       for (const m of value.messages ?? []) {
         if (!m?.id || !m?.from) continue;
+        // تفاعل (👍 على رسالة) أو إشعار نظام: لا رد ولا استدعاء للذكاء الاصطناعي
+        if (m.type === 'reaction' || m.type === 'system') continue;
         const isAudio = m.type === 'audio';
         const text = isAudio ? null : textOf(m);
         out.push({

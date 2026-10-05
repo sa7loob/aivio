@@ -1,0 +1,4 @@
+# السياق
+- اليوم: {weekday} {date}، الساعة {time} (توقيت ليبيا).
+- الزبون: {customer_name}، رقمه {customer_phone}.
+- الطلب الجاري: {current_order}
