@@ -13,7 +13,8 @@ const PORT = Number(process.env.PORT || 8080);
 const WA_TOKEN = process.env.MOCK_WA_TOKEN || 'test-wa-token';
 const OPENAI_KEY = process.env.MOCK_OPENAI_KEY || 'sk-test';
 const DEFAULT_REPLY = {
-  reply: 'مرحبا بيك في حلويات شهرزاد! شن تحب تطلب اليوم؟',
+  // نص ثابت مُعلَّم: البديل لا يفهم الرسائل، فلا يُظن أنه رد الذكاء الاصطناعي الحقيقي
+  reply: '(رد تجريبي من البديل المحلي، وليس من الذكاء الاصطناعي) مرحبا بيك في حلويات شهرزاد!',
   order: { status: 'none', customer_name: null, phone: null, items: [], fulfillment: null, address: null,
     needed_at: null, notes: null },
   handoff: { needed: false, reason: null },
@@ -115,7 +116,8 @@ const server = http.createServer((req, res) => {
         return send(res, 200, { id: 'chatcmpl-mock', model: request.model, object: 'chat.completion',
           choices: [{ index: 0, finish_reason: 'stop',
             message: { role: 'assistant', content: typeof content === 'string' ? content : JSON.stringify(content) } }],
-          usage: { prompt_tokens: 1200, completion_tokens: 80, total_tokens: 1280 } });
+          usage: { prompt_tokens: 1200, completion_tokens: 80, total_tokens: 1280,
+            prompt_tokens_details: { cached_tokens: 1024 } } });
       }
     }
     record('unknown', {});

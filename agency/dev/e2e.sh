@@ -59,7 +59,7 @@ mq() { docker exec "$MOCK" wget -qO- http://127.0.0.1:8080/__mock/requests | pyt
 import json, sys
 R = json.load(sys.stdin)
 def sends(to): return [r['message'] for r in R if r['kind'] == 'send' and r['message']['to'] == to]
-def chats(phone): return [r['request'] for r in R if r['kind'] == 'chat' and ('+' + phone) in r['request']['messages'][0]['content']]
+def chats(phone): return [r['request'] for r in R if r['kind'] == 'chat' and any(('+' + phone) in m['content'] for m in r['request']['messages'] if m['role'] == 'system')]
 def users(req): return [m['content'] for m in req['messages'] if m['role'] == 'user']
 print($1)"; }
 mtrue() { [ "$(mq "$1")" = True ]; }
@@ -114,7 +114,7 @@ step "2) رسالة نصية"
 P=218920000002
 wa_text $P wamid.S2 'السلام عليكم، قداش كيلو البقلاوة؟'
 wait_until 30 mtrue "len(sends('$P')) == 1" || true
-check "رد واحد للزبون" mtrue "len(sends('$P')) == 1 and sends('$P')[0]['text']['body'].startswith('مرحبا بيك')"
+check "رد واحد للزبون" mtrue "len(sends('$P')) == 1 and 'رد تجريبي من البديل' in sends('$P')[0]['text']['body']"
 check "OpenAI استلم القائمة بالأسعار ورسالة الزبون" mtrue "'بقلاوة بالفستق: 85 د.ل لكل كيلو' in chats('$P')[0]['messages'][0]['content'] and users(chats('$P')[0]) == ['السلام عليكم، قداش كيلو البقلاوة؟']"
 check "JSON منظم (strict) بالنموذج المحدد" mtrue "chats('$P')[0]['response_format']['json_schema']['strict'] and chats('$P')[0]['model'] == 'gpt-4o'"
 check "الرسالتان محفوظتان (الصادرة بمعرّف Meta)" dbis "SELECT string_agg(direction || ':' || (wa_message_id LIKE 'wamid.%')::text, ',' ORDER BY m.id) FROM messages m JOIN contacts c ON c.id = m.contact_id WHERE c.wa_id = '$P'" "in:true,out:true"
@@ -220,7 +220,64 @@ mock_script '{"fail_sends":false}'
 check "workflow الأخطاء سجّل العقدة والرسالة" dbis "SELECT count(*) > 0 FROM workflow_errors WHERE node = 'Send reply' AND workflow = '[WA] رسائل واتساب' AND message <> ''" t
 check "3 محاولات إرسال" mtrue "len(sends('$P13')) == 3"
 
-step "14) التنظيف اليومي"
+step "14) طلب المنيو: القائمة من القاعدة بدون ذكاء اصطناعي"
+P14=218920000014
+wa_text $P14 wamid.S14 'السلام عليكم، نبي نشوف المنيو'
+wait_until 30 mtrue "len(sends('$P14')) >= 1" || true
+check "قائمة الأسعار وصلت للزبون بأسعار menu.csv" mtrue "(lambda b: b.startswith('🧁 *قائمة أسعار حلويات شهرزاد*') and 'بقلاوة بالفستق: 85 د.ل لكل كيلو' in b and 'تورتة عيد ميلاد كبيرة: 220 د.ل لكل تورتة' in b)(sends('$P14')[0]['text']['body'])"
+check "بدون أي استدعاء لـ OpenAI" mtrue "len(chats('$P14')) == 0"
+check "محفوظة في المحادثة كإشارة قصيرة" dbis "SELECT m.text FROM messages m JOIN contacts c ON c.id = m.contact_id WHERE c.wa_id = '$P14' AND m.direction = 'out'" "[أرسلنا قائمة الأسعار كاملة]"
+wa_text $P14 wamid.S14b 'قداش الكنافة؟'
+wait_until 30 mtrue "len(chats('$P14')) == 1" || true
+check "سؤال عن صنف بعدها يروح للوكيل، ويعرف أننا أرسلنا القائمة" mtrue "len(chats('$P14')) == 1 and [m['content'] for m in chats('$P14')[0]['messages'] if m['role'] == 'assistant'] == ['[أرسلنا قائمة الأسعار كاملة]']"
+
+step "15) صورة المنيو"
+db "UPDATE bot_settings SET menu_image_url = 'https://example.ly/shahrazad-menu.jpg'" >/dev/null
+P15=218920000015
+wa_text $P15 wamid.S15 'المنيو'
+wait_until 30 mtrue "len(sends('$P15')) >= 1" || true
+check "صورة المنيو بالرابط وتعليق للطلب، بدون OpenAI" mtrue "(lambda m: m['type'] == 'image' and m['image']['link'] == 'https://example.ly/shahrazad-menu.jpg' and 'للطلب' in m['image']['caption'])(sends('$P15')[0]) and len(chats('$P15')) == 0"
+db "UPDATE bot_settings SET menu_image_url = NULL" >/dev/null
+
+step "16) تفاعل 👍 على رسالة البوت"
+P16=218920000016
+wa_post "$(wa_body $P16 "{\"from\":\"$P16\",\"id\":\"wamid.S16\",\"timestamp\":\"$(date +%s)\",\"type\":\"reaction\",\"reaction\":{\"message_id\":\"wamid.MOCK1\",\"emoji\":\"👍\"}}")" >/dev/null
+sleep 8
+check "لا حفظ" dbis "SELECT count(*) FROM messages WHERE wa_message_id = 'wamid.S16'" 0
+check "لا رد ولا OpenAI" mtrue "len(sends('$P16')) + len(chats('$P16')) == 0"
+
+step "17) توفير التوكنز: بداية ثابتة تُخزَّن عند OpenAI + تسجيل الاستهلاك"
+check "الرسالة الأولى لـ OpenAI متطابقة لزبونين مختلفين" mtrue "chats('$P')[0]['messages'][0] == chats('$P5')[0]['messages'][0]"
+check "بيانات الزبون والوقت في رسالة السياق فقط" mtrue "'+$P' not in chats('$P')[0]['messages'][0]['content'] and '+$P' in chats('$P')[0]['messages'][1]['content']"
+check "استهلاك كل رد محفوظ (الموديل، المدخل، المخزّن، المخرج)" dbis "SELECT m.ai_model || '|' || m.prompt_tokens || '|' || m.cached_tokens || '|' || m.completion_tokens FROM messages m JOIN contacts c ON c.id = m.contact_id WHERE c.wa_id = '$P' AND m.direction = 'out'" "gpt-4o|1200|1024|80"
+
+step "18) الطلب الجاري بدل محادثة طويلة، ونافذة زمنية للمحادثة"
+P18=218920000018
+COLLECTING=$(printf '%s' "$ORDER" | sed 's/"status":"complete"/"status":"collecting"/')
+mock_script "{\"completions\":[$(reply_json 'باهي، استلام ولا توصيل؟' "$COLLECTING")]}"
+wa_text $P18 wamid.S18 'نبي كيلو ونص بقلاوة بالفستق وتورتة صغيرة'
+wait_until 30 mtrue "len(sends('$P18')) == 1" || true
+check "الطلب الجاري محفوظ للزبون" dbis "SELECT current_order->>'status' || '|' || jsonb_array_length(current_order->'items') FROM contacts WHERE wa_id = '$P18'" "collecting|2"
+db "INSERT INTO messages (contact_id, direction, type, text, created_at) SELECT id, 'in', 'text', 'رسالة من الأسبوع الماضي', now() - interval '3 days' FROM contacts WHERE wa_id = '$P18'" >/dev/null
+wa_text $P18 wamid.S18b 'توصيل'
+wait_until 30 mtrue "len(chats('$P18')) == 2" || true
+check "الوكيل استلم الطلب الجاري في السياق" mtrue "'الطلب الجاري: بقلاوة بالفستق × 1.5 كيلو، تورتة عيد ميلاد صغيرة × 1 تورتة (مكتوب عليها سارة)' in chats('$P18')[1]['messages'][1]['content']"
+check "رسائل أقدم من history_hours لا تُرسل" mtrue "'رسالة من الأسبوع الماضي' not in str(users(chats('$P18')[1]))"
+
+step "19) حد الردود في الساعة لكل زبون"
+db "UPDATE bot_settings SET max_replies_per_hour = 2" >/dev/null
+P19=218920000019
+wa_text $P19 wamid.S19a 'مرحبا'
+wait_until 30 mtrue "len(sends('$P19')) == 1" || true
+wa_text $P19 wamid.S19b 'قداش الغريبة'
+wait_until 30 mtrue "len(sends('$P19')) == 2" || true
+wa_text $P19 wamid.S19c 'وقداش الكعك'
+sleep 10
+check "بعد ردّين في الساعة: لا رد ولا OpenAI" mtrue "len(sends('$P19')) == 2 and len(chats('$P19')) == 2"
+check "الرسالة محفوظة رغم ذلك" dbis "SELECT count(*) FROM messages WHERE wa_message_id = 'wamid.S19c'" 1
+db "UPDATE bot_settings SET max_replies_per_hour = 30" >/dev/null
+
+step "20) التنظيف اليومي"
 db "INSERT INTO messages (contact_id, direction, type, text, created_at) SELECT id, 'in', 'text', 'قديمة', now() - interval '100 days' FROM contacts WHERE wa_id = '$P'" >/dev/null
 before=$(db "SELECT count(*) FROM messages")
 # n8n execute يشغّل task broker خاصاً به: منفذ مختلف عن النسخة العاملة
@@ -228,14 +285,14 @@ docker compose exec -T -e N8N_RUNNERS_BROKER_PORT=5690 "n8n-$CLIENT" n8n execute
 check "حذف الرسالة الأقدم من history_days" dbis "SELECT count(*) FROM messages WHERE text = 'قديمة'" 0
 check "الرسائل الحديثة باقية" dbis "SELECT count(*) FROM messages" $((before - 1))
 
-step "15) إعادة النشر"
+step "21) إعادة النشر"
 ./scripts/deploy-bot.sh "$CLIENT" sweets >/dev/null 2>&1
 wait_until 60 verify_ok || true
 check "الإعدادات صف واحد" dbis "SELECT count(*) FROM bot_settings" 1
 check "القائمة بدون تكرار" dbis "SELECT count(*) FROM products" 11
-P15=218920000015
-wa_text $P15 wamid.S15 'مرحبا'
-check "البوت يرد بعد إعادة النشر" wait_until 30 mtrue "len(sends('$P15')) == 1"
+P21=218920000021
+wa_text $P21 wamid.S21 'مرحبا'
+check "البوت يرد بعد إعادة النشر" wait_until 30 mtrue "len(sends('$P21')) == 1"
 
 printf '\n\033[1mالنتيجة: %d ناجح، %d فاشل\033[0m\n' "$PASS" "$FAIL"
 for f in "${FAILED[@]}"; do echo "  ✘ $f"; done
